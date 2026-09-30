@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
+import authRoutes from './routes/authRoutes.js';
 import { notFound, errorHandler } from './middlewares/errorMiddleware.js';
 
 dotenv.config();
@@ -21,6 +22,9 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV
   });
 });
+
+// Rutas
+app.use('/api/auth', authRoutes);
 
 // Manejo de errores
 app.use(notFound);
