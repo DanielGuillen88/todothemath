@@ -7,32 +7,29 @@ export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-      const fetchProjects = async () => {
-        try {
-          const res = await api.get('/projects');
-          
-          // Maneja arrays directos, data.data, data.projects o listas anidadas
-          const responseData = res.data;
-          const projectList = Array.isArray(responseData)
-            ? responseData
-            : Array.isArray(responseData.data)
-            ? responseData.data
-            : Array.isArray(responseData.projects)
-            ? responseData.projects
-            : [];
+useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await api.get('/projects');
+        
+        // Acceso a la ruta exacta del backend: res.data.data.projects
+        const projectList = 
+          res.data?.data?.projects || 
+          res.data?.projects || 
+          res.data?.data || 
+          [];
 
-          setProjects(projectList);
-        } catch (err) {
-          console.error('Error cargando proyectos:', err);
-          setProjects([]);
-        } finally {
-          setLoading(false);
-        }
-      };
+        setProjects(Array.isArray(projectList) ? projectList : []);
+      } catch (err) {
+        console.error('Error cargando proyectos:', err);
+        setProjects([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-      fetchProjects();
-    }, []);
+    fetchProjects();
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -74,10 +71,10 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
+          {projects.map((project, idx) => (
             <Link
-              key={project._id}
-              to={`/projects/${project._id}`}
+              key={project._id || project.id || idx}
+              to={`/projects/${project._id || project.id}`}
               className="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 p-6 rounded-xl transition-all hover:shadow-lg group flex flex-col justify-between"
             >
               <div>

@@ -5,6 +5,8 @@ import Navbar from './components/layout/Navbar';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import CreateProject from './pages/CreateProject';
+import ProjectDetails from './pages/ProjectDetails';
 
 export default function App() {
   return (
@@ -21,6 +23,8 @@ export default function App() {
               {/* Rutas Privadas / Protegidas */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/projects/new" element={<CreateProject />} />
+                <Route path="/projects/:id" element={<ProjectDetails />} />
               </Route>
 
               {/* Redirección por defecto */}
