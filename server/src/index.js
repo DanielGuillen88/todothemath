@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import projectRoutes from './routes/projectRoutes.js';
-import { notFound, errorHandler } from './middlewares/errorMiddleware.js';
+import { notFound, errorHandler } from './middlewares/errorHandler.js';
 
 dotenv.config();
 
