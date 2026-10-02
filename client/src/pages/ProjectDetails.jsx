@@ -13,7 +13,10 @@ import {
   UserCheck,
   Users,
   Layers,
-  Filter
+  Filter,
+  Trash2,
+  X,
+  Check
 } from 'lucide-react';
 
 export default function ProjectDetails() {
@@ -23,6 +26,10 @@ export default function ProjectDetails() {
   const [expenses, setExpenses] = useState([]);
   const [balances, setBalances] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Estados de control para eliminación inline
+  const [deletingId, setDeletingId] = useState(null);
+  const [deletedId, setDeletedId] = useState(null);
 
   // Formulario de gasto
   const [title, setTitle] = useState('');
@@ -37,9 +44,9 @@ export default function ProjectDetails() {
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'date' | 'category' | 'both'
   const [filterType, setFilterType] = useState('all'); // 'all' | 'shared' | 'personal'
 
-  const loadProjectData = useCallback(async () => {
+  const loadProjectData = useCallback(async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const [projectRes, balancesRes, expensesRes] = await Promise.allSettled([
         api.get(`/projects/${id}`),
         api.get(`/projects/${id}/expenses/balances`),
@@ -48,22 +55,35 @@ export default function ProjectDetails() {
 
       if (projectRes.status === 'fulfilled') {
         const pData = projectRes.value.data;
-        setProject(pData?.data?.project || pData?.project || pData?.data || pData);
+        const extracted = 
+          pData?.data?.project || 
+          pData?.project || 
+          pData?.data || 
+          pData;
+
+        if (extracted && (extracted._id || extracted.title)) {
+          setProject(extracted);
+        }
       }
 
       if (balancesRes.status === 'fulfilled') {
-        setBalances(balancesRes.value.data?.data || balancesRes.value.data);
+        const bData = balancesRes.value.data;
+        setBalances(bData?.data || bData);
       }
 
       if (expensesRes.status === 'fulfilled') {
         const eData = expensesRes.value.data;
-        const list = eData?.data?.expenses || eData?.expenses || eData?.data || (Array.isArray(eData) ? eData : []);
+        const list = 
+          eData?.data?.expenses || 
+          eData?.expenses || 
+          eData?.data || 
+          (Array.isArray(eData) ? eData : []);
         setExpenses(Array.isArray(list) ? list : []);
       }
     } catch (err) {
       console.error('Error cargando el proyecto:', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [id]);
 
@@ -71,7 +91,7 @@ export default function ProjectDetails() {
     loadProjectData();
   }, [loadProjectData]);
 
-const handleAddExpense = async (e) => {
+  const handleAddExpense = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -89,26 +109,44 @@ const handleAddExpense = async (e) => {
       isPersonal: Boolean(isPersonal),
     };
 
-    console.log('📤 Enviando nuevo gasto a la API:', payload);
-
     setIsSubmitting(true);
     try {
       await api.post(`/projects/${id}/expenses`, payload);
 
-      // Limpiar formulario y resetear a valores por defecto
       setTitle('');
       setAmount('');
       setCategory('Comida / Restaurante');
       setDate(new Date().toISOString().split('T')[0]);
       setIsPersonal(false);
 
-      // Recargar lista de gastos y balances recalculados
-      await loadProjectData();
+      // Carga en segundo plano sin desmontar la UI
+      await loadProjectData(true);
     } catch (err) {
       console.error('Error al registrar el gasto:', err);
       setError(err.response?.data?.message || 'Error al registrar el gasto.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId) => {
+    if (!expenseId) return;
+
+    try {
+      await api.delete(`/projects/${id}/expenses/${expenseId}`);
+
+      setDeletingId(null);
+      setDeletedId(expenseId);
+
+      // Mostrar confirmación visual y recargar en segundo plano
+      setTimeout(async () => {
+        await loadProjectData(true);
+        setDeletedId(null);
+      }, 700);
+    } catch (err) {
+      console.error('Error al eliminar el gasto:', err);
+      setDeletingId(null);
+      alert(err.response?.data?.message || 'Error al eliminar el gasto');
     }
   };
 
@@ -121,7 +159,7 @@ const handleAddExpense = async (e) => {
     });
   }, [expenses, filterType]);
 
-  // Agrupación flexible
+  // Agrupación dinámica
   const groupedExpenses = useMemo(() => {
     if (groupBy === 'none') return null;
 
@@ -131,7 +169,7 @@ const handleAddExpense = async (e) => {
         const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
         if (!groups[d]) groups[d] = { total: 0, items: [] };
         groups[d].items.push(exp);
-        groups[d].total += Number(exp.amount);
+        groups[d].total += Number(exp.amount || 0);
       });
       return groups;
     }
@@ -142,7 +180,7 @@ const handleAddExpense = async (e) => {
         const cat = exp.category || 'Sin categoría';
         if (!groups[cat]) groups[cat] = { total: 0, items: [] };
         groups[cat].items.push(exp);
-        groups[cat].total += Number(exp.amount);
+        groups[cat].total += Number(exp.amount || 0);
       });
       return groups;
     }
@@ -156,8 +194,8 @@ const handleAddExpense = async (e) => {
         if (!groups[d].categories[cat]) groups[d].categories[cat] = { total: 0, items: [] };
         
         groups[d].categories[cat].items.push(exp);
-        groups[d].categories[cat].total += Number(exp.amount);
-        groups[d].total += Number(exp.amount);
+        groups[d].categories[cat].total += Number(exp.amount || 0);
+        groups[d].total += Number(exp.amount || 0);
       });
       return groups;
     }
@@ -165,37 +203,93 @@ const handleAddExpense = async (e) => {
     return null;
   }, [filteredExpenses, groupBy]);
 
-  const renderExpenseItem = (exp, idx) => (
-    <div key={exp._id || idx} className="py-3 px-3 hover:bg-slate-800/40 rounded-lg flex items-center justify-between transition-colors">
-      <div>
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-white">{exp.title}</p>
-          {exp.isPersonal ? (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/40">
-              <UserCheck className="w-3 h-3" /> Personal
-            </span>
+  const renderExpenseItem = (exp, idx) => {
+    const isConfirming = deletingId === exp._id;
+    const isDeleted = deletedId === exp._id;
+
+    if (isDeleted) {
+      return (
+        <div
+          key={exp._id || idx}
+          className="py-3 px-3 my-1 bg-emerald-950/40 border border-emerald-800/60 rounded-lg flex items-center justify-center gap-2 text-emerald-300 text-xs font-medium animate-pulse"
+        >
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>Gasto eliminado correctamente</span>
+        </div>
+      );
+    }
+
+    return (
+      <div 
+        key={exp._id || idx} 
+        className={`py-3 px-3 hover:bg-slate-800/40 rounded-lg flex items-center justify-between transition-colors group ${
+          isConfirming ? 'bg-red-950/20 border border-red-900/50' : ''
+        }`}
+      >
+        <div className="flex-1 min-w-0 pr-4">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-white truncate">{exp.title}</p>
+            {exp.isPersonal ? (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/40 shrink-0">
+                <UserCheck className="w-3 h-3" /> Personal
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/40 shrink-0">
+                <Users className="w-3 h-3" /> Compartido
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {exp.category || 'General'} • Pagado por <span className="text-slate-300 font-medium">{exp.paidBy?.name || 'Tú'}</span>
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4 shrink-0">
+          {isConfirming ? (
+            <div className="flex items-center gap-2 bg-slate-950/90 border border-red-900/60 px-2.5 py-1.5 rounded-lg shadow-inner">
+              <span className="text-xs text-red-300 font-medium mr-1">¿Eliminar?</span>
+              <button
+                onClick={() => handleDeleteExpense(exp._id)}
+                title="Confirmar eliminación"
+                className="p-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setDeletingId(null)}
+                title="Cancelar"
+                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           ) : (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/40">
-              <Users className="w-3 h-3" /> Compartido
-            </span>
+            <>
+              <div className="text-right">
+                <p className="text-sm font-bold text-emerald-400">
+                  {Number(exp.amount || 0).toFixed(2)} {project?.currency || '€'}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {new Date(exp.date || exp.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setDeletingId(exp._id)}
+                title="Eliminar gasto"
+                className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-950/30 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
           )}
         </div>
-        <p className="text-xs text-slate-400 mt-0.5">
-          {exp.category || 'General'} • Pagado por <span className="text-slate-300 font-medium">{exp.paidBy?.name || 'Tú'}</span>
-        </p>
       </div>
-      <div className="text-right">
-        <p className="text-sm font-bold text-emerald-400">
-          {Number(exp.amount).toFixed(2)} {project.currency || '€'}
-        </p>
-        <p className="text-[11px] text-slate-500">
-          {new Date(exp.date || exp.createdAt).toLocaleDateString()}
-        </p>
-      </div>
-    </div>
-  );
+    );
+  };
 
-  if (loading) {
+  // Cláusulas de guarda para evitar renderizar sin datos
+  if (loading && !project) {
     return (
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
@@ -226,29 +320,29 @@ const handleAddExpense = async (e) => {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-950/60 px-2.5 py-0.5 rounded-md border border-indigo-900/50">
-                {project.type}
+                {project?.type || 'General'}
               </span>
               <span className="text-xs text-slate-400 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
-                {new Date(project.createdAt).toLocaleDateString()}
+                {project?.createdAt ? new Date(project.createdAt).toLocaleDateString() : ''}
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">{project.title}</h1>
-            <p className="text-slate-400 text-sm mt-1">{project.description || 'Sin descripción'}</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">{project?.title}</h1>
+            <p className="text-slate-400 text-sm mt-1">{project?.description || 'Sin descripción'}</p>
           </div>
 
           <div className="flex items-center gap-6 bg-slate-950 px-5 py-3 rounded-xl border border-slate-800 self-start sm:self-auto">
             <div>
               <p className="text-xs text-slate-500">Total Gastado</p>
               <p className="text-base font-bold text-emerald-400">
-                {expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0).toFixed(2)} {project.currency || '€'}
+                {expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0).toFixed(2)} {project?.currency || '€'}
               </p>
             </div>
             <div className="h-8 w-px bg-slate-800"></div>
             <div>
               <p className="text-xs text-slate-500">Presupuesto</p>
               <p className="text-base font-bold text-indigo-400">
-                {project.budget ? `${project.budget} ${project.currency || '€'}` : 'Sin límite'}
+                {project?.budget ? `${project.budget} ${project?.currency || '€'}` : 'Sin límite'}
               </p>
             </div>
           </div>
@@ -288,7 +382,7 @@ const handleAddExpense = async (e) => {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Importe ({project.currency || '€'})</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Importe ({project?.currency || '€'})</label>
                 <input
                   type="number"
                   step="any"
@@ -345,7 +439,7 @@ const handleAddExpense = async (e) => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm px-5 py-2.5 rounded-lg transition-colors shadow-sm"
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm px-5 py-2.5 rounded-lg transition-colors shadow-sm cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>{isSubmitting ? 'Guardando...' : 'Registrar Gasto'}</span>
@@ -362,7 +456,6 @@ const handleAddExpense = async (e) => {
                 <span>Historial de Gastos ({filteredExpenses.length})</span>
               </h2>
 
-              {/* Controles de Filtro y Agrupación */}
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
                   <Filter className="w-3.5 h-3.5 text-slate-400" />
@@ -403,20 +496,20 @@ const handleAddExpense = async (e) => {
               </div>
             ) : groupBy === 'both' ? (
               <div className="space-y-6">
-                {Object.entries(groupedExpenses).map(([d, dayData]) => (
+                {Object.entries(groupedExpenses || {}).map(([d, dayData]) => (
                   <div key={d} className="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
                     <div className="flex justify-between items-center pb-3 border-b border-slate-800/80 mb-3">
                       <span className="font-semibold text-indigo-400 text-sm">{d}</span>
                       <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
-                        Subtotal día: {dayData.total.toFixed(2)} {project.currency || '€'}
+                        Subtotal día: {dayData.total.toFixed(2)} {project?.currency || '€'}
                       </span>
                     </div>
                     <div className="space-y-4 pl-2">
-                      {Object.entries(dayData.categories).map(([catName, catData]) => (
+                      {Object.entries(dayData.categories || {}).map(([catName, catData]) => (
                         <div key={catName}>
                           <div className="flex justify-between items-center text-xs text-slate-400 mb-1 font-medium">
                             <span>{catName}</span>
-                            <span>{catData.total.toFixed(2)} {project.currency || '€'}</span>
+                            <span>{catData.total.toFixed(2)} {project?.currency || '€'}</span>
                           </div>
                           <div className="divide-y divide-slate-800/40">
                             {catData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
@@ -429,12 +522,12 @@ const handleAddExpense = async (e) => {
               </div>
             ) : (
               <div className="space-y-6">
-                {Object.entries(groupedExpenses).map(([groupKey, groupData]) => (
+                {Object.entries(groupedExpenses || {}).map(([groupKey, groupData]) => (
                   <div key={groupKey} className="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
                     <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2">
                       <span className="font-semibold text-indigo-400 text-sm">{groupKey}</span>
                       <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
-                        Subtotal: {groupData.total.toFixed(2)} {project.currency || '€'}
+                        Subtotal: {groupData.total.toFixed(2)} {project?.currency || '€'}
                       </span>
                     </div>
                     <div className="divide-y divide-slate-800/50">
@@ -475,7 +568,7 @@ const handleAddExpense = async (e) => {
                       <span className="text-emerald-400">{tx.to}</span>
                     </div>
                     <span className="font-bold text-white bg-slate-800/80 px-2.5 py-1 rounded-md text-xs">
-                      {Number(tx.amount).toFixed(2)} {project.currency || '€'}
+                      {Number(tx.amount || 0).toFixed(2)} {project?.currency || '€'}
                     </span>
                   </div>
                 ))}

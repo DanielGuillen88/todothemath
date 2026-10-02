@@ -20,6 +20,6 @@ router.route('/balances')
   .get(getProjectBalances);
 
 router.route('/:expenseId')
-  .delete(protect, deleteExpense);
+  .delete(deleteExpense);
 
 export default router;
