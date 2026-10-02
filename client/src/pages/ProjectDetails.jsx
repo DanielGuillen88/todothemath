@@ -17,7 +17,9 @@ import {
   Trash2,
   X,
   Check,
-  Pencil
+  Pencil,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 export default function ProjectDetails() {
@@ -42,7 +44,7 @@ export default function ProjectDetails() {
   const [error, setError] = useState('');
 
   // Controles de visualización
-  const [groupBy, setGroupBy] = useState('none'); // 'none' | 'date' | 'category' | 'both'
+  const [groupBy, setGroupBy] = useState('date'); // 'none' | 'date' | 'category' | 'both'
   const [filterType, setFilterType] = useState('all'); // 'all' | 'shared' | 'personal'
 
   // Control de edición inline
@@ -57,8 +59,21 @@ export default function ProjectDetails() {
 
   // ID del gasto que está pidiendo confirmación para guardar cambios
   const [confirmSaveId, setConfirmSaveId] = useState(null);
-  // ID del gasto recién editado para mostrar feedback visual breve
+  // ID del gasto recién editado para feedback visual breve
   const [updatedId, setUpdatedId] = useState(null);
+
+  // Fecha de hoy en formato local
+  const todayStr = useMemo(() => new Date().toLocaleDateString(), []);
+
+  // Estado para los acordeones abiertos (Hoy abierto por defecto)
+  const [openAccordions, setOpenAccordions] = useState({ [todayStr]: true });
+
+  const toggleAccordion = (key) => {
+    setOpenAccordions(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
 
   const loadProjectData = useCallback(async (isSilent = false) => {
     try {
@@ -135,7 +150,6 @@ export default function ProjectDetails() {
       setDate(new Date().toISOString().split('T')[0]);
       setIsPersonal(false);
 
-      // Carga en segundo plano sin desmontar la UI
       await loadProjectData(true);
     } catch (err) {
       console.error('Error al registrar el gasto:', err);
@@ -154,7 +168,6 @@ export default function ProjectDetails() {
       setDeletingId(null);
       setDeletedId(expenseId);
 
-      // Mostrar confirmación visual y recargar en segundo plano
       setTimeout(async () => {
         await loadProjectData(true);
         setDeletedId(null);
@@ -166,7 +179,7 @@ export default function ProjectDetails() {
     }
   };
 
-const startEditing = (exp) => {
+  const startEditing = (exp) => {
     setDeletingId(null);
     setConfirmSaveId(null);
     setEditingId(exp._id);
@@ -199,12 +212,10 @@ const startEditing = (exp) => {
         isPersonal: editForm.isPersonal,
       });
 
-      // Cerramos el modo edición y activamos feedback de éxito
       setEditingId(null);
       setConfirmSaveId(null);
       setUpdatedId(expenseId);
 
-      // Feedback visual durante 800ms antes de volver a la vista limpia recalculada
       setTimeout(async () => {
         await loadProjectData(true);
         setUpdatedId(null);
@@ -225,13 +236,21 @@ const startEditing = (exp) => {
     });
   }, [expenses, filterType]);
 
-  // Agrupación dinámica
+  // Agrupación flexible con orden cronológico descendente
   const groupedExpenses = useMemo(() => {
-    if (groupBy === 'none') return null;
+    if (groupBy === 'none') {
+      return [...filteredExpenses].sort((a, b) => 
+        new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+      );
+    }
 
     if (groupBy === 'date') {
+      const sorted = [...filteredExpenses].sort((a, b) => 
+        new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+      );
+
       const groups = {};
-      filteredExpenses.forEach(exp => {
+      sorted.forEach(exp => {
         const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
         if (!groups[d]) groups[d] = { total: 0, items: [] };
         groups[d].items.push(exp);
@@ -248,12 +267,24 @@ const startEditing = (exp) => {
         groups[cat].items.push(exp);
         groups[cat].total += Number(exp.amount || 0);
       });
+
+      // Ordenar gastos dentro de cada categoría: del más reciente al más antiguo
+      Object.keys(groups).forEach(cat => {
+        groups[cat].items.sort((a, b) => 
+          new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+        );
+      });
+
       return groups;
     }
 
     if (groupBy === 'both') {
+      const sorted = [...filteredExpenses].sort((a, b) => 
+        new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+      );
+
       const groups = {};
-      filteredExpenses.forEach(exp => {
+      sorted.forEach(exp => {
         const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
         const cat = exp.category || 'Sin categoría';
         if (!groups[d]) groups[d] = { total: 0, categories: {} };
@@ -263,6 +294,15 @@ const startEditing = (exp) => {
         groups[d].categories[cat].total += Number(exp.amount || 0);
         groups[d].total += Number(exp.amount || 0);
       });
+
+      Object.values(groups).forEach(day => {
+        Object.values(day.categories).forEach(catObj => {
+          catObj.items.sort((a, b) => 
+            new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+          );
+        });
+      });
+
       return groups;
     }
 
@@ -276,7 +316,6 @@ const startEditing = (exp) => {
     const isConfirmingSave = confirmSaveId === exp._id;
     const isUpdated = updatedId === exp._id;
 
-    // Estado: Eliminado con éxito
     if (isDeleted) {
       return (
         <div
@@ -289,7 +328,6 @@ const startEditing = (exp) => {
       );
     }
 
-    // Estado: Modificado con éxito
     if (isUpdated) {
       return (
         <div
@@ -302,7 +340,6 @@ const startEditing = (exp) => {
       );
     }
 
-    // Estado: Modo edición inline
     if (isEditing) {
       return (
         <div key={exp._id || idx} className="p-3.5 my-1 bg-slate-950 border border-indigo-500/50 rounded-xl space-y-3">
@@ -353,7 +390,6 @@ const startEditing = (exp) => {
             </label>
           </div>
 
-          {/* Barra de acciones de edición con confirmación */}
           <div className="flex justify-end items-center gap-2 pt-1 border-t border-slate-800">
             {isConfirmingSave ? (
               <div className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-700/60 px-2.5 py-1 rounded-lg">
@@ -382,14 +418,14 @@ const startEditing = (exp) => {
                   onClick={cancelEditing}
                   className="flex items-center gap-1 px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
                 >
-                  <X className="w-3 h-3" /> Cancelar
+                  <X className="w-3.5 h-3.5" /> Cancelar
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmSaveId(exp._id)}
                   className="flex items-center gap-1 px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors cursor-pointer"
                 >
-                  <Check className="w-3 h-3" /> Guardar
+                  <Check className="w-3.5 h-3.5" /> Guardar
                 </button>
               </>
             )}
@@ -398,7 +434,6 @@ const startEditing = (exp) => {
       );
     }
 
-    // Estado: Vista normal
     return (
       <div 
         key={exp._id || idx} 
@@ -454,7 +489,6 @@ const startEditing = (exp) => {
                 </p>
               </div>
 
-              {/* Botón Editar */}
               <button
                 onClick={() => startEditing(exp)}
                 title="Editar gasto"
@@ -463,7 +497,6 @@ const startEditing = (exp) => {
                 <Pencil className="w-4 h-4" />
               </button>
 
-              {/* Botón Eliminar */}
               <button
                 onClick={() => setDeletingId(exp._id)}
                 title="Eliminar gasto"
@@ -478,7 +511,6 @@ const startEditing = (exp) => {
     );
   };
 
-  // Cláusulas de guarda para evitar renderizar sin datos
   if (loading && !project) {
     return (
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
@@ -681,50 +713,162 @@ const startEditing = (exp) => {
                 No hay gastos que coincidan con los filtros seleccionados.
               </p>
             ) : groupBy === 'none' ? (
+              /* Sin agrupar: Lista pura ordenada de más reciente a más antiguo */
               <div className="divide-y divide-slate-800">
-                {filteredExpenses.map((exp, idx) => renderExpenseItem(exp, idx))}
+                {groupedExpenses.map((exp, idx) => renderExpenseItem(exp, idx))}
               </div>
-            ) : groupBy === 'both' ? (
-              <div className="space-y-6">
-                {Object.entries(groupedExpenses || {}).map(([d, dayData]) => (
-                  <div key={d} className="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
-                    <div className="flex justify-between items-center pb-3 border-b border-slate-800/80 mb-3">
-                      <span className="font-semibold text-indigo-400 text-sm">{d}</span>
-                      <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
-                        Subtotal día: {dayData.total.toFixed(2)} {project?.currency || '€'}
-                      </span>
-                    </div>
-                    <div className="space-y-4 pl-2">
-                      {Object.entries(dayData.categories || {}).map(([catName, catData]) => (
-                        <div key={catName}>
-                          <div className="flex justify-between items-center text-xs text-slate-400 mb-1 font-medium">
-                            <span>{catName}</span>
-                            <span>{catData.total.toFixed(2)} {project?.currency || '€'}</span>
-                          </div>
-                          <div className="divide-y divide-slate-800/40">
-                            {catData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
+            ) : groupBy === 'date' ? (
+              /* Agrupado por Día: Hoy abierto por defecto, resto en acordeón */
+              <div className="space-y-3">
+                {Object.entries(groupedExpenses || {}).map(([d, dayData]) => {
+                  const isToday = d === todayStr;
+                  const isOpen = openAccordions[d] ?? isToday;
+
+                  return (
+                    <div 
+                      key={d} 
+                      className={`border rounded-xl transition-colors overflow-hidden ${
+                        isToday 
+                          ? 'border-indigo-500/40 bg-slate-950/70 shadow-sm' 
+                          : 'border-slate-800/80 bg-slate-950/30'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleAccordion(d)}
+                        className="w-full flex items-center justify-between p-3.5 hover:bg-slate-800/30 text-left transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {isOpen ? (
+                            <ChevronDown className="w-4 h-4 text-indigo-400" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-slate-500" />
+                          )}
+                          <div>
+                            <span className="font-semibold text-white text-sm">
+                              {d}
+                            </span>
+                            {isToday && (
+                              <span className="ml-2 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
+                                Hoy
+                              </span>
+                            )}
+                            <span className="text-xs text-slate-500 ml-2">
+                              ({dayData.items.length} {dayData.items.length === 1 ? 'gasto' : 'gastos'})
+                            </span>
                           </div>
                         </div>
-                      ))}
+
+                        <div className="text-right">
+                          <span className="text-xs text-slate-400 font-medium mr-1.5">Total día:</span>
+                          <span className="text-sm font-bold text-emerald-400">
+                            {dayData.total.toFixed(2)} {project?.currency || '€'}
+                          </span>
+                        </div>
+                      </button>
+
+                      {isOpen && (
+                        <div className="px-3 pb-3 pt-1 border-t border-slate-800/60 divide-y divide-slate-800/40">
+                          {dayData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+            ) : groupBy === 'category' ? (
+              /* Agrupado por Categoría: Acordeón por categoría con orden cronológico */
+              <div className="space-y-3">
+                {Object.entries(groupedExpenses || {}).map(([catName, catData]) => {
+                  const isOpen = openAccordions[catName] ?? true;
+
+                  return (
+                    <div 
+                      key={catName} 
+                      className="border border-slate-800 rounded-xl bg-slate-950/40 overflow-hidden"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleAccordion(catName)}
+                        className="w-full flex items-center justify-between p-3.5 hover:bg-slate-800/30 text-left transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {isOpen ? (
+                            <ChevronDown className="w-4 h-4 text-indigo-400" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-slate-500" />
+                          )}
+                          <span className="font-semibold text-white text-sm">
+                            {catName}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            ({catData.items.length} {catData.items.length === 1 ? 'gasto' : 'gastos'})
+                          </span>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-xs text-slate-400 font-medium mr-1.5">Total categoría:</span>
+                          <span className="text-sm font-bold text-emerald-400">
+                            {catData.total.toFixed(2)} {project?.currency || '€'}
+                          </span>
+                        </div>
+                      </button>
+
+                      {isOpen && (
+                        <div className="px-3 pb-3 pt-1 border-t border-slate-800/60 divide-y divide-slate-800/40">
+                          {catData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <div className="space-y-6">
-                {Object.entries(groupedExpenses || {}).map(([groupKey, groupData]) => (
-                  <div key={groupKey} className="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
-                    <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2">
-                      <span className="font-semibold text-indigo-400 text-sm">{groupKey}</span>
-                      <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
-                        Subtotal: {groupData.total.toFixed(2)} {project?.currency || '€'}
-                      </span>
+              /* Agrupado por Día y Categoría (both) */
+              <div className="space-y-4">
+                {Object.entries(groupedExpenses || {}).map(([d, dayData]) => {
+                  const isToday = d === todayStr;
+                  const isOpen = openAccordions[d] ?? isToday;
+
+                  return (
+                    <div key={d} className="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
+                      <button
+                        type="button"
+                        onClick={() => toggleAccordion(d)}
+                        className="w-full flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2 text-left cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isOpen ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
+                          <span className="font-semibold text-indigo-400 text-sm">{d}</span>
+                          {isToday && (
+                            <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300">
+                              Hoy
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
+                          Total día: {dayData.total.toFixed(2)} {project?.currency || '€'}
+                        </span>
+                      </button>
+
+                      {isOpen && (
+                        <div className="space-y-4 pl-2 pt-2">
+                          {Object.entries(dayData.categories || {}).map(([catName, catData]) => (
+                            <div key={catName}>
+                              <div className="flex justify-between items-center text-xs text-slate-400 mb-1 font-medium bg-slate-900/50 px-2 py-1 rounded">
+                                <span>{catName} ({catData.items.length})</span>
+                                <span className="text-emerald-400 font-semibold">{catData.total.toFixed(2)} {project?.currency || '€'}</span>
+                              </div>
+                              <div className="divide-y divide-slate-800/40">
+                                {catData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="divide-y divide-slate-800/50">
-                      {groupData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
