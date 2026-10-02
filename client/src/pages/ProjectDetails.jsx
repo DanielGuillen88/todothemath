@@ -16,7 +16,8 @@ import {
   Filter,
   Trash2,
   X,
-  Check
+  Check,
+  Pencil
 } from 'lucide-react';
 
 export default function ProjectDetails() {
@@ -43,6 +44,21 @@ export default function ProjectDetails() {
   // Controles de visualización
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'date' | 'category' | 'both'
   const [filterType, setFilterType] = useState('all'); // 'all' | 'shared' | 'personal'
+
+  // Control de edición inline
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    amount: '',
+    category: '',
+    date: '',
+    isPersonal: false,
+  });
+
+  // ID del gasto que está pidiendo confirmación para guardar cambios
+  const [confirmSaveId, setConfirmSaveId] = useState(null);
+  // ID del gasto recién editado para mostrar feedback visual breve
+  const [updatedId, setUpdatedId] = useState(null);
 
   const loadProjectData = useCallback(async (isSilent = false) => {
     try {
@@ -150,6 +166,56 @@ export default function ProjectDetails() {
     }
   };
 
+const startEditing = (exp) => {
+    setDeletingId(null);
+    setConfirmSaveId(null);
+    setEditingId(exp._id);
+    setEditForm({
+      title: exp.title,
+      amount: exp.amount,
+      category: exp.category || 'General',
+      date: exp.date ? new Date(exp.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      isPersonal: Boolean(exp.isPersonal),
+    });
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setConfirmSaveId(null);
+  };
+
+  const handleUpdateExpense = async (expenseId) => {
+    if (!editForm.title.trim() || Number(editForm.amount) <= 0) {
+      alert('Introduce un concepto y un importe válido mayor que 0.');
+      return;
+    }
+
+    try {
+      await api.put(`/projects/${id}/expenses/${expenseId}`, {
+        title: editForm.title.trim(),
+        amount: Number(editForm.amount),
+        category: editForm.category,
+        date: new Date(editForm.date).toISOString(),
+        isPersonal: editForm.isPersonal,
+      });
+
+      // Cerramos el modo edición y activamos feedback de éxito
+      setEditingId(null);
+      setConfirmSaveId(null);
+      setUpdatedId(expenseId);
+
+      // Feedback visual durante 800ms antes de volver a la vista limpia recalculada
+      setTimeout(async () => {
+        await loadProjectData(true);
+        setUpdatedId(null);
+      }, 800);
+    } catch (err) {
+      console.error('Error actualizando el gasto:', err);
+      setConfirmSaveId(null);
+      alert(err.response?.data?.message || 'Error al actualizar el gasto');
+    }
+  };
+
   // Filtrado de gastos
   const filteredExpenses = useMemo(() => {
     return expenses.filter(exp => {
@@ -204,9 +270,13 @@ export default function ProjectDetails() {
   }, [filteredExpenses, groupBy]);
 
   const renderExpenseItem = (exp, idx) => {
-    const isConfirming = deletingId === exp._id;
+    const isConfirmingDelete = deletingId === exp._id;
     const isDeleted = deletedId === exp._id;
+    const isEditing = editingId === exp._id;
+    const isConfirmingSave = confirmSaveId === exp._id;
+    const isUpdated = updatedId === exp._id;
 
+    // Estado: Eliminado con éxito
     if (isDeleted) {
       return (
         <div
@@ -219,11 +289,121 @@ export default function ProjectDetails() {
       );
     }
 
+    // Estado: Modificado con éxito
+    if (isUpdated) {
+      return (
+        <div
+          key={exp._id || idx}
+          className="py-3 px-3 my-1 bg-emerald-950/40 border border-emerald-800/60 rounded-lg flex items-center justify-center gap-2 text-emerald-300 text-xs font-medium animate-pulse"
+        >
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>Gasto actualizado correctamente</span>
+        </div>
+      );
+    }
+
+    // Estado: Modo edición inline
+    if (isEditing) {
+      return (
+        <div key={exp._id || idx} className="p-3.5 my-1 bg-slate-950 border border-indigo-500/50 rounded-xl space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <input
+              type="text"
+              value={editForm.title}
+              onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+              placeholder="Concepto"
+              className="sm:col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+            <input
+              type="number"
+              step="any"
+              min="0.01"
+              value={editForm.amount}
+              onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+              placeholder="Importe"
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+            <input
+              type="date"
+              value={editForm.date}
+              onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+            <select
+              value={editForm.category}
+              onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="Comida / Restaurante">Restaurante</option>
+              <option value="Transporte">Transporte</option>
+              <option value="Alojamiento">Alojamiento</option>
+              <option value="Ocio">Ocio</option>
+              <option value="Supermercado">Supermercado</option>
+              <option value="Compras personales">Compras personales</option>
+              <option value="Otros">Otros</option>
+            </select>
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={editForm.isPersonal}
+                onChange={(e) => setEditForm({ ...editForm, isPersonal: e.target.checked })}
+                className="w-3.5 h-3.5 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Personal</span>
+            </label>
+          </div>
+
+          {/* Barra de acciones de edición con confirmación */}
+          <div className="flex justify-end items-center gap-2 pt-1 border-t border-slate-800">
+            {isConfirmingSave ? (
+              <div className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-700/60 px-2.5 py-1 rounded-lg">
+                <span className="text-xs text-indigo-200 font-medium mr-1">¿Guardar cambios?</span>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateExpense(exp._id)}
+                  title="Confirmar guardado"
+                  className="p-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmSaveId(null)}
+                  title="Volver a la edición"
+                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  className="flex items-center gap-1 px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
+                >
+                  <X className="w-3 h-3" /> Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmSaveId(exp._id)}
+                  className="flex items-center gap-1 px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors cursor-pointer"
+                >
+                  <Check className="w-3 h-3" /> Guardar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Estado: Vista normal
     return (
       <div 
         key={exp._id || idx} 
         className={`py-3 px-3 hover:bg-slate-800/40 rounded-lg flex items-center justify-between transition-colors group ${
-          isConfirming ? 'bg-red-950/20 border border-red-900/50' : ''
+          isConfirmingDelete ? 'bg-red-950/20 border border-red-900/50' : ''
         }`}
       >
         <div className="flex-1 min-w-0 pr-4">
@@ -244,21 +424,21 @@ export default function ProjectDetails() {
           </p>
         </div>
 
-        <div className="flex items-center gap-4 shrink-0">
-          {isConfirming ? (
+        <div className="flex items-center gap-3 shrink-0">
+          {isConfirmingDelete ? (
             <div className="flex items-center gap-2 bg-slate-950/90 border border-red-900/60 px-2.5 py-1.5 rounded-lg shadow-inner">
               <span className="text-xs text-red-300 font-medium mr-1">¿Eliminar?</span>
               <button
                 onClick={() => handleDeleteExpense(exp._id)}
                 title="Confirmar eliminación"
-                className="p-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
+                className="p-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setDeletingId(null)}
                 title="Cancelar"
-                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -274,10 +454,20 @@ export default function ProjectDetails() {
                 </p>
               </div>
 
+              {/* Botón Editar */}
+              <button
+                onClick={() => startEditing(exp)}
+                title="Editar gasto"
+                className="text-slate-500 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-indigo-950/30 transition-colors cursor-pointer"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+
+              {/* Botón Eliminar */}
               <button
                 onClick={() => setDeletingId(exp._id)}
                 title="Eliminar gasto"
-                className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-950/30 transition-colors"
+                className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-950/30 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

@@ -153,3 +153,75 @@ export const deleteExpense = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Actualizar un gasto
+// @route   PUT /api/projects/:projectId/expenses/:expenseId
+// @access  Private
+export const updateExpense = async (req, res, next) => {
+  try {
+    const { projectId, expenseId } = req.params;
+    const { title, amount, category, date, isPersonal, splitBetween } = req.body;
+
+    const expense = await Expense.findOne({ _id: expenseId, project: projectId });
+    if (!expense) {
+      res.status(404);
+      throw new Error('Gasto no encontrado');
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) {
+      res.status(404);
+      throw new Error('Proyecto no encontrado');
+    }
+
+    // Solo quien pagó el gasto o el creador del proyecto puede editarlo
+    const isOwner = expense.paidBy.toString() === req.user._id.toString();
+    const isCreator = project.creator && project.creator.toString() === req.user._id.toString();
+    if (!isOwner && !isCreator) {
+      res.status(403);
+      throw new Error('No tienes permiso para modificar este gasto');
+    }
+
+    if (title !== undefined) expense.title = title.trim();
+    if (amount !== undefined) {
+      const numAmount = Number(amount);
+      if (numAmount <= 0) {
+        res.status(400);
+        throw new Error('El importe debe ser superior a 0');
+      }
+      expense.amount = numAmount;
+    }
+    if (category !== undefined) expense.category = category;
+    if (date !== undefined) expense.date = date;
+
+    if (isPersonal !== undefined) {
+      expense.isPersonal = Boolean(isPersonal);
+      if (expense.isPersonal) {
+        expense.splitBetween = [{ user: expense.paidBy, share: expense.amount }];
+      } else if (!splitBetween || splitBetween.length === 0) {
+        const sharePerMember = Number((expense.amount / project.members.length).toFixed(2));
+        expense.splitBetween = project.members.map((mId) => ({
+          user: mId,
+          share: sharePerMember,
+        }));
+      }
+    }
+
+    if (splitBetween && !expense.isPersonal) {
+      expense.splitBetween = splitBetween;
+    }
+
+    await expense.save();
+
+    const populatedExpense = await Expense.findById(expense._id)
+      .populate('paidBy', 'name email')
+      .populate('splitBetween.user', 'name email');
+
+    res.status(200).json({
+      status: 'success',
+      data: { expense: populatedExpense },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
