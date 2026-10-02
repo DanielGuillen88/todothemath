@@ -1,7 +1,20 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
-import { ArrowLeft, Receipt, Plus, Calendar, CreditCard, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  Receipt, 
+  Plus, 
+  Calendar, 
+  CreditCard, 
+  ArrowRight, 
+  CheckCircle2, 
+  AlertCircle,
+  UserCheck,
+  Users,
+  Layers,
+  Filter
+} from 'lucide-react';
 
 export default function ProjectDetails() {
   const { id } = useParams();
@@ -15,10 +28,16 @@ export default function ProjectDetails() {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Comida / Restaurante');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isPersonal, setIsPersonal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-const loadProjectData = useCallback(async () => {
+  // Controles de visualización
+  const [groupBy, setGroupBy] = useState('none'); // 'none' | 'date' | 'category' | 'both'
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'shared' | 'personal'
+
+  const loadProjectData = useCallback(async () => {
     try {
       setLoading(true);
       const [projectRes, balancesRes, expensesRes] = await Promise.allSettled([
@@ -27,32 +46,19 @@ const loadProjectData = useCallback(async () => {
         api.get(`/projects/${id}/expenses`)
       ]);
 
-      // 1. Cargar datos del proyecto
       if (projectRes.status === 'fulfilled') {
         const pData = projectRes.value.data;
-        const extractedProject = 
-          pData?.data?.project || 
-          pData?.project || 
-          pData?.data || 
-          pData;
-        setProject(extractedProject);
+        setProject(pData?.data?.project || pData?.project || pData?.data || pData);
       }
 
-      // 2. Cargar balances y liquidaciones
       if (balancesRes.status === 'fulfilled') {
-        const bData = balancesRes.value.data;
-        setBalances(bData?.data || bData);
+        setBalances(balancesRes.value.data?.data || balancesRes.value.data);
       }
 
-      // 3. Cargar lista de gastos desde su endpoint dedicado
       if (expensesRes.status === 'fulfilled') {
         const eData = expensesRes.value.data;
-        const expenseList = 
-          eData?.data?.expenses || 
-          eData?.expenses || 
-          eData?.data || 
-          (Array.isArray(eData) ? eData : []);
-        setExpenses(Array.isArray(expenseList) ? expenseList : []);
+        const list = eData?.data?.expenses || eData?.expenses || eData?.data || (Array.isArray(eData) ? eData : []);
+        setExpenses(Array.isArray(list) ? list : []);
       }
     } catch (err) {
       console.error('Error cargando el proyecto:', err);
@@ -65,33 +71,129 @@ const loadProjectData = useCallback(async () => {
     loadProjectData();
   }, [loadProjectData]);
 
-  const handleAddExpense = async (e) => {
+const handleAddExpense = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!amount || Number(amount) <= 0) {
+    const numericAmount = Number(amount);
+    if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
       setError('Introduce un importe válido mayor que 0.');
       return;
     }
 
+    const payload = {
+      title: title.trim(),
+      amount: numericAmount,
+      category,
+      date: date ? new Date(date).toISOString() : new Date().toISOString(),
+      isPersonal: Boolean(isPersonal),
+    };
+
+    console.log('📤 Enviando nuevo gasto a la API:', payload);
+
     setIsSubmitting(true);
     try {
-      await api.post(`/projects/${id}/expenses`, {
-        title,
-        amount: Number(amount),
-        category,
-      });
+      await api.post(`/projects/${id}/expenses`, payload);
 
+      // Limpiar formulario y resetear a valores por defecto
       setTitle('');
       setAmount('');
       setCategory('Comida / Restaurante');
+      setDate(new Date().toISOString().split('T')[0]);
+      setIsPersonal(false);
+
+      // Recargar lista de gastos y balances recalculados
       await loadProjectData();
     } catch (err) {
+      console.error('Error al registrar el gasto:', err);
       setError(err.response?.data?.message || 'Error al registrar el gasto.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // Filtrado de gastos
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter(exp => {
+      if (filterType === 'shared') return !exp.isPersonal;
+      if (filterType === 'personal') return exp.isPersonal;
+      return true;
+    });
+  }, [expenses, filterType]);
+
+  // Agrupación flexible
+  const groupedExpenses = useMemo(() => {
+    if (groupBy === 'none') return null;
+
+    if (groupBy === 'date') {
+      const groups = {};
+      filteredExpenses.forEach(exp => {
+        const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
+        if (!groups[d]) groups[d] = { total: 0, items: [] };
+        groups[d].items.push(exp);
+        groups[d].total += Number(exp.amount);
+      });
+      return groups;
+    }
+
+    if (groupBy === 'category') {
+      const groups = {};
+      filteredExpenses.forEach(exp => {
+        const cat = exp.category || 'Sin categoría';
+        if (!groups[cat]) groups[cat] = { total: 0, items: [] };
+        groups[cat].items.push(exp);
+        groups[cat].total += Number(exp.amount);
+      });
+      return groups;
+    }
+
+    if (groupBy === 'both') {
+      const groups = {};
+      filteredExpenses.forEach(exp => {
+        const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
+        const cat = exp.category || 'Sin categoría';
+        if (!groups[d]) groups[d] = { total: 0, categories: {} };
+        if (!groups[d].categories[cat]) groups[d].categories[cat] = { total: 0, items: [] };
+        
+        groups[d].categories[cat].items.push(exp);
+        groups[d].categories[cat].total += Number(exp.amount);
+        groups[d].total += Number(exp.amount);
+      });
+      return groups;
+    }
+
+    return null;
+  }, [filteredExpenses, groupBy]);
+
+  const renderExpenseItem = (exp, idx) => (
+    <div key={exp._id || idx} className="py-3 px-3 hover:bg-slate-800/40 rounded-lg flex items-center justify-between transition-colors">
+      <div>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-white">{exp.title}</p>
+          {exp.isPersonal ? (
+            <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/40">
+              <UserCheck className="w-3 h-3" /> Personal
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/40">
+              <Users className="w-3 h-3" /> Compartido
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-0.5">
+          {exp.category || 'General'} • Pagado por <span className="text-slate-300 font-medium">{exp.paidBy?.name || 'Tú'}</span>
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-sm font-bold text-emerald-400">
+          {Number(exp.amount).toFixed(2)} {project.currency || '€'}
+        </p>
+        <p className="text-[11px] text-slate-500">
+          {new Date(exp.date || exp.createdAt).toLocaleDateString()}
+        </p>
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -105,9 +207,7 @@ const loadProjectData = useCallback(async () => {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12 text-center text-slate-400">
         <p>No se encontró el proyecto o no tienes acceso.</p>
-        <Link to="/" className="text-indigo-400 hover:underline mt-4 inline-block">
-          Volver al Dashboard
-        </Link>
+        <Link to="/" className="text-indigo-400 hover:underline mt-4 inline-block">Volver al Dashboard</Link>
       </div>
     );
   }
@@ -116,15 +216,11 @@ const loadProjectData = useCallback(async () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Volver a Mis Proyectos
+      <Link to="/" className="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
+        <ArrowLeft className="w-4 h-4" /> Volver a Mis Proyectos
       </Link>
 
-      {/* Encabezado del Proyecto */}
+      {/* Encabezado */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -143,8 +239,10 @@ const loadProjectData = useCallback(async () => {
 
           <div className="flex items-center gap-6 bg-slate-950 px-5 py-3 rounded-xl border border-slate-800 self-start sm:self-auto">
             <div>
-              <p className="text-xs text-slate-500">Moneda</p>
-              <p className="text-base font-bold text-white">{project.currency || 'EUR'}</p>
+              <p className="text-xs text-slate-500">Total Gastado</p>
+              <p className="text-base font-bold text-emerald-400">
+                {expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0).toFixed(2)} {project.currency || '€'}
+              </p>
             </div>
             <div className="h-8 w-px bg-slate-800"></div>
             <div>
@@ -159,7 +257,7 @@ const loadProjectData = useCallback(async () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Columna Izquierda: Formulario y Registro de Gastos */}
+        {/* Columna Izquierda: Formulario + Historial con Agrupaciones */}
         <div className="lg:col-span-2 space-y-8">
           
           {/* Formulario Añadir Gasto */}
@@ -177,14 +275,14 @@ const loadProjectData = useCallback(async () => {
             )}
 
             <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-1">
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-slate-400 mb-1">Concepto</label>
                 <input
                   type="text"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Cena, Peajes..."
+                  placeholder="Café, Souvenir, Gasolina..."
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -204,6 +302,17 @@ const loadProjectData = useCallback(async () => {
               </div>
 
               <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Fecha</label>
+                <input
+                  type="date"
+                  required
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">Categoría</label>
                 <select
                   value={category}
@@ -215,15 +324,28 @@ const loadProjectData = useCallback(async () => {
                   <option value="Alojamiento">Alojamiento</option>
                   <option value="Ocio">Ocio</option>
                   <option value="Supermercado">Supermercado</option>
+                  <option value="Compras personales">Compras personales</option>
                   <option value="Otros">Otros</option>
                 </select>
+              </div>
+
+              <div className="flex items-center pt-6">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={isPersonal}
+                    onChange={(e) => setIsPersonal(e.target.checked)}
+                    className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                  />
+                  <span>Gasto personal (no dividir)</span>
+                </label>
               </div>
 
               <div className="sm:col-span-3 flex justify-end pt-2">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm px-4 py-2 rounded-lg transition-colors shadow-sm"
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm px-5 py-2.5 rounded-lg transition-colors shadow-sm"
                 >
                   <Plus className="w-4 h-4" />
                   <span>{isSubmitting ? 'Guardando...' : 'Registrar Gasto'}</span>
@@ -232,34 +354,91 @@ const loadProjectData = useCallback(async () => {
             </form>
           </div>
 
-          {/* Historial de Gastos */}
+          {/* Historial con Filtros y Agrupación */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-indigo-400" />
-              <span>Historial de Gastos ({expenses.length})</span>
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-indigo-400" />
+                <span>Historial de Gastos ({filteredExpenses.length})</span>
+              </h2>
 
-            {expenses.length === 0 ? (
+              {/* Controles de Filtro y Agrupación */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    className="bg-transparent text-slate-300 focus:outline-none cursor-pointer"
+                  >
+                    <option value="all" className="bg-slate-900">Todos</option>
+                    <option value="shared" className="bg-slate-900">Compartidos</option>
+                    <option value="personal" className="bg-slate-900">Solo Personales</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+                  <Layers className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={groupBy}
+                    onChange={(e) => setGroupBy(e.target.value)}
+                    className="bg-transparent text-slate-300 focus:outline-none cursor-pointer"
+                  >
+                    <option value="none" className="bg-slate-900">Sin agrupar</option>
+                    <option value="date" className="bg-slate-900">Por Día</option>
+                    <option value="category" className="bg-slate-900">Por Categoría</option>
+                    <option value="both" className="bg-slate-900">Por Día y Categoría</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {filteredExpenses.length === 0 ? (
               <p className="text-slate-500 text-sm text-center py-8">
-                No hay gastos registrados todavía en este proyecto.
+                No hay gastos que coincidan con los filtros seleccionados.
               </p>
-            ) : (
+            ) : groupBy === 'none' ? (
               <div className="divide-y divide-slate-800">
-                {expenses.map((exp, idx) => (
-                  <div key={exp._id || idx} className="py-3.5 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{exp.title}</p>
-                      <p className="text-xs text-slate-400">
-                        {exp.category || 'General'} • Pagado por <span className="text-indigo-400">{exp.paidBy?.name || 'Usuario'}</span>
-                      </p>
+                {filteredExpenses.map((exp, idx) => renderExpenseItem(exp, idx))}
+              </div>
+            ) : groupBy === 'both' ? (
+              <div className="space-y-6">
+                {Object.entries(groupedExpenses).map(([d, dayData]) => (
+                  <div key={d} className="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
+                    <div className="flex justify-between items-center pb-3 border-b border-slate-800/80 mb-3">
+                      <span className="font-semibold text-indigo-400 text-sm">{d}</span>
+                      <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
+                        Subtotal día: {dayData.total.toFixed(2)} {project.currency || '€'}
+                      </span>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-emerald-400">
-                        {Number(exp.amount).toFixed(2)} {project.currency || '€'}
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {new Date(exp.createdAt || Date.now()).toLocaleDateString()}
-                      </p>
+                    <div className="space-y-4 pl-2">
+                      {Object.entries(dayData.categories).map(([catName, catData]) => (
+                        <div key={catName}>
+                          <div className="flex justify-between items-center text-xs text-slate-400 mb-1 font-medium">
+                            <span>{catName}</span>
+                            <span>{catData.total.toFixed(2)} {project.currency || '€'}</span>
+                          </div>
+                          <div className="divide-y divide-slate-800/40">
+                            {catData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {Object.entries(groupedExpenses).map(([groupKey, groupData]) => (
+                  <div key={groupKey} className="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2">
+                      <span className="font-semibold text-indigo-400 text-sm">{groupKey}</span>
+                      <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
+                        Subtotal: {groupData.total.toFixed(2)} {project.currency || '€'}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-slate-800/50">
+                      {groupData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
                     </div>
                   </div>
                 ))}
@@ -268,7 +447,7 @@ const loadProjectData = useCallback(async () => {
           </div>
         </div>
 
-        {/* Columna Derecha: Liquidaciones y Balances Óptimos */}
+        {/* Columna Derecha: Liquidaciones */}
         <div className="space-y-6">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
             <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
@@ -276,7 +455,7 @@ const loadProjectData = useCallback(async () => {
               <span>Liquidación Óptima</span>
             </h2>
             <p className="text-xs text-slate-400 mb-6">
-              Transacciones mínimas calculadas por el algoritmo para saldar todas las deudas.
+              Transacciones calculadas para deudas compartidas (los gastos personales se excluyen automáticamente).
             </p>
 
             {settlements.length === 0 ? (

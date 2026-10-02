@@ -2,7 +2,8 @@ import { Router } from 'express';
 import {
   createExpense,
   getExpensesByProject,
-  getProjectBalances
+  getProjectBalances,
+  deleteExpense
 } from '../controllers/expenseController.js';
 import { protect } from '../middlewares/auth.js';
 
@@ -17,5 +18,8 @@ router.route('/')
 
 router.route('/balances')
   .get(getProjectBalances);
+
+router.route('/:expenseId')
+  .delete(protect, deleteExpense);
 
 export default router;

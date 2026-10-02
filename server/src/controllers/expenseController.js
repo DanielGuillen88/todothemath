@@ -8,7 +8,9 @@ import { calculateBalancesAndDebts } from '../services/balanceService.js';
 export const createExpense = async (req, res, next) => {
   try {
     const { projectId } = req.params;
-    const { title, amount, splitBetween, category, date } = req.body;
+    const { title, amount, splitBetween, category, date, isPersonal } = req.body;
+
+    console.log('📌 Payload recibido en createExpense:', { title, amount, isPersonal, date });
 
     if (!title || !amount || amount <= 0) {
       res.status(400);
@@ -21,22 +23,15 @@ export const createExpense = async (req, res, next) => {
       throw new Error('🙃 Proyecto no encontrado');
     }
 
-    // Comprobar que el usuario pertenece al proyecto
-    const isMember = project.members.some(
-      (m) => m.toString() === req.user._id.toString()
-    );
-    if (!isMember) {
-      res.status(403);
-      throw new Error('⛔️ No tienes permiso para añadir gastos en este proyecto');
-    }
-
-    // Si no se define un reparto personalizado, se divide a partes iguales entre todos los miembros
+    // Reparto según sea personal o compartido
     let finalSplit = splitBetween;
-    if (!finalSplit || finalSplit.length === 0) {
+    if (Boolean(isPersonal)) {
+      finalSplit = [{ user: req.user._id, share: Number(amount) }];
+    } else if (!finalSplit || finalSplit.length === 0) {
       const sharePerMember = Number((amount / project.members.length).toFixed(2));
       finalSplit = project.members.map((memberId) => ({
         user: memberId,
-        share: sharePerMember
+        share: sharePerMember,
       }));
     }
 
@@ -47,7 +42,8 @@ export const createExpense = async (req, res, next) => {
       paidBy: req.user._id,
       splitBetween: finalSplit,
       category: category || 'General',
-      date: date || Date.now()
+      date: date || Date.now(),
+      isPersonal: Boolean(isPersonal), // <-- Asegurar conversión a booleano
     });
 
     const populatedExpense = await Expense.findById(expense._id)
@@ -56,7 +52,7 @@ export const createExpense = async (req, res, next) => {
 
     res.status(201).json({
       status: 'success',
-      data: { expense: populatedExpense }
+      data: { expense: populatedExpense },
     });
   } catch (error) {
     next(error);
@@ -106,8 +102,11 @@ export const getProjectBalances = async (req, res, next) => {
 
     const expenses = await Expense.find({ project: projectId });
 
-    // Delegamos el cómputo financiero al servicio
-    const balanceSummary = calculateBalancesAndDebts(expenses, project.members);
+    // AQUÍ VA LA LÍNEA: Excluir gastos personales de la liquidación de deudas
+    const sharedExpenses = expenses.filter((exp) => !exp.isPersonal);
+
+    // Delegamos el cómputo financiero pasando solo los gastos a repartir
+    const balanceSummary = calculateBalancesAndDebts(sharedExpenses, project.members);
 
     res.status(200).json({
       status: 'success',
@@ -117,6 +116,38 @@ export const getProjectBalances = async (req, res, next) => {
         currency: project.currency,
         ...balanceSummary
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Eliminar un gasto
+// @route   DELETE /api/projects/:projectId/expenses/:expenseId
+// @access  Private
+export const deleteExpense = async (req, res, next) => {
+  try {
+    const { projectId, expenseId } = req.params;
+
+    const expense = await Expense.findOne({ _id: expenseId, project: projectId });
+    if (!expense) {
+      res.status(404);
+      throw new Error('Gasto no encontrado');
+    }
+
+    // Solo quien pagó el gasto o el creador del proyecto puede borrarlo
+    const isOwner = expense.paidBy.toString() === req.user._id.toString();
+    if (!isOwner) {
+      res.status(403);
+      throw new Error('No tienes permiso para eliminar este gasto');
+    }
+
+    await expense.deleteOne();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Gasto eliminado correctamente',
+      data: null,
     });
   } catch (error) {
     next(error);
