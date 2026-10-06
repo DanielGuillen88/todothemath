@@ -3,7 +3,7 @@ import {
   createProject,
   getMyProjects,
   getProjectById,
-  addMember
+  addMember,
 } from '../controllers/projectController.js';
 import expenseRoutes from './expenseRoutes.js';
 import { protect } from '../middlewares/auth.js';
@@ -13,7 +13,8 @@ const router = Router();
 // Todas las rutas de proyectos son privadas y seguras con JWT
 router.use(protect);
 
-router.use('/:projectId/expenses', expenseRoutes); // Rutas anidadas para gastos de un proyecto
+// Rutas anidadas para gastos de un proyecto
+router.use('/:projectId/expenses', expenseRoutes);
 
 router.route('/')
   .post(createProject)

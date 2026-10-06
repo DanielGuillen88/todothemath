@@ -1,3 +1,4 @@
+import { User } from '../models/User.js';
 import { Project } from '../models/Project.js';
 
 // @desc    Crear un nuevo proyecto (viaje, evento, reforma)
@@ -133,6 +134,67 @@ export const addMember = async (req, res, next) => {
       status: 'success',
       message: 'Miembro añadido con éxito ✅',
       data: { project }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Añadir un participante al proyecto por email
+// @route   POST /api/projects/:id/members
+// @access  Private
+export const addMemberToProject = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400);
+      throw new Error('Debes indicar el email del participante.');
+    }
+
+    const project = await Project.findById(id);
+    if (!project) {
+      res.status(404);
+      throw new Error('Proyecto no encontrado.');
+    }
+
+    // Comprobar que quien invita sea miembro o creador
+    const isMember = project.members.some(
+      (m) => m.toString() === req.user._id.toString()
+    );
+    if (!isMember) {
+      res.status(403);
+      throw new Error('No tienes permisos para añadir miembros a este proyecto.');
+    }
+
+    // Buscar al usuario por email
+    const userToAdd = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!userToAdd) {
+      res.status(404);
+      throw new Error('No existe ningún usuario registrado con ese email.');
+    }
+
+    // Comprobar si ya es miembro
+    const alreadyMember = project.members.some(
+      (m) => m.toString() === userToAdd._id.toString()
+    );
+    if (alreadyMember) {
+      res.status(400);
+      throw new Error('El usuario ya forma parte de este proyecto.');
+    }
+
+    project.members.push(userToAdd._id);
+    await project.save();
+
+    const updatedProject = await Project.findById(id)
+      .populate('members', 'name email')
+      .populate('creator', 'name email');
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Participante añadido correctamente.',
+      data: { project: updatedProject },
     });
   } catch (error) {
     next(error);

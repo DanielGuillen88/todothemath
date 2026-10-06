@@ -19,7 +19,9 @@ import {
   Check,
   Pencil,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  UserPlus,
+  Crown
 } from 'lucide-react';
 
 export default function ProjectDetails() {
@@ -40,8 +42,15 @@ export default function ProjectDetails() {
   const [category, setCategory] = useState('Comida / Restaurante');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [isPersonal, setIsPersonal] = useState(false);
+  const [paidBy, setPaidBy] = useState('');
+  const [selectedMembers, setSelectedMembers] = useState([]); // Miembros en el reparto
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Formulario de invitar participante
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState({ text: '', type: '' });
 
   // Controles de visualización
   const [groupBy, setGroupBy] = useState('date'); // 'none' | 'date' | 'category' | 'both'
@@ -55,6 +64,7 @@ export default function ProjectDetails() {
     category: '',
     date: '',
     isPersonal: false,
+    paidBy: '',
   });
 
   // ID del gasto que está pidiendo confirmación para guardar cambios
@@ -94,6 +104,11 @@ export default function ProjectDetails() {
 
         if (extracted && (extracted._id || extracted.title)) {
           setProject(extracted);
+          // Si no hay pagador seleccionado en el formulario, asignamos el primer miembro disponible
+          if (!paidBy && extracted.members && extracted.members.length > 0) {
+            setPaidBy(extracted.members[0]._id);
+            setSelectedMembers(extracted.members.map(m => m._id));
+          }
         }
       }
 
@@ -116,11 +131,54 @@ export default function ProjectDetails() {
     } finally {
       if (!isSilent) setLoading(false);
     }
-  }, [id]);
+  }, [id, paidBy]);
 
   useEffect(() => {
     loadProjectData();
   }, [loadProjectData]);
+
+  // Manejar adición de miembros
+  const handleAddMember = async (e) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+
+    setIsInviting(true);
+    setInviteMsg({ text: '', type: '' });
+
+    try {
+      const res = await api.post(`/projects/${id}/members`, {
+        email: inviteEmail.trim().toLowerCase(),
+      });
+
+      setInviteMsg({
+        text: res.data?.message || 'Participante añadido con éxito.',
+        type: 'success',
+      });
+      setInviteEmail('');
+      await loadProjectData(true);
+    } catch (err) {
+      console.error('Error al invitar participante:', err);
+      setInviteMsg({
+        text: err.response?.data?.message || 'Error al añadir el participante.',
+        type: 'error',
+      });
+    } finally {
+      setIsInviting(false);
+      setTimeout(() => setInviteMsg({ text: '', type: '' }), 4000);
+    }
+  };
+
+  // Toggle de miembros en el reparto
+  const toggleMemberSplit = (memberId) => {
+    setSelectedMembers(prev => {
+      if (prev.includes(memberId)) {
+        if (prev.length === 1) return prev; // Mantener al menos 1
+        return prev.filter(m => m !== memberId);
+      } else {
+        return [...prev, memberId];
+      }
+    });
+  };
 
   const handleAddExpense = async (e) => {
     e.preventDefault();
@@ -132,12 +190,23 @@ export default function ProjectDetails() {
       return;
     }
 
+    let splitPayload = [];
+    if (!isPersonal && selectedMembers.length > 0) {
+      const sharePerPerson = Number((numericAmount / selectedMembers.length).toFixed(2));
+      splitPayload = selectedMembers.map(mId => ({
+        user: mId,
+        share: sharePerPerson
+      }));
+    }
+
     const payload = {
       title: title.trim(),
       amount: numericAmount,
       category,
       date: date ? new Date(date).toISOString() : new Date().toISOString(),
       isPersonal: Boolean(isPersonal),
+      paidBy: paidBy || project?.members?.[0]?._id,
+      splitBetween: isPersonal ? undefined : splitPayload,
     };
 
     setIsSubmitting(true);
@@ -149,6 +218,9 @@ export default function ProjectDetails() {
       setCategory('Comida / Restaurante');
       setDate(new Date().toISOString().split('T')[0]);
       setIsPersonal(false);
+      if (project?.members) {
+        setSelectedMembers(project.members.map(m => m._id));
+      }
 
       await loadProjectData(true);
     } catch (err) {
@@ -189,6 +261,7 @@ export default function ProjectDetails() {
       category: exp.category || 'General',
       date: exp.date ? new Date(exp.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       isPersonal: Boolean(exp.isPersonal),
+      paidBy: exp.paidBy?._id || exp.paidBy || project?.members?.[0]?._id,
     });
   };
 
@@ -210,6 +283,7 @@ export default function ProjectDetails() {
         category: editForm.category,
         date: new Date(editForm.date).toISOString(),
         isPersonal: editForm.isPersonal,
+        paidBy: editForm.paidBy,
       });
 
       setEditingId(null);
@@ -236,7 +310,7 @@ export default function ProjectDetails() {
     });
   }, [expenses, filterType]);
 
-  // Agrupación flexible con orden cronológico descendente
+  // Agrupación flexible
   const groupedExpenses = useMemo(() => {
     if (groupBy === 'none') {
       return [...filteredExpenses].sort((a, b) => 
@@ -268,7 +342,6 @@ export default function ProjectDetails() {
         groups[cat].total += Number(exp.amount || 0);
       });
 
-      // Ordenar gastos dentro de cada categoría: del más reciente al más antiguo
       Object.keys(groups).forEach(cat => {
         groups[cat].items.sort((a, b) => 
           new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
@@ -379,6 +452,24 @@ export default function ProjectDetails() {
               <option value="Compras personales">Compras personales</option>
               <option value="Otros">Otros</option>
             </select>
+
+            {/* Selector de pagador en edición */}
+            <select
+              value={editForm.paidBy}
+              onChange={(e) => setEditForm({ ...editForm, paidBy: e.target.value })}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+            {project?.members?.map((m, idx) => {
+              const memberId = m?._id || m;
+              const memberName = m?.name || `Usuario (${String(memberId).slice(-4)})`;
+              return (
+                <option key={memberId || idx} value={memberId}>
+                  Pagado por: {memberName}
+                </option>
+              );
+            })}
+            </select>
+
             <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
               <input
                 type="checkbox"
@@ -386,7 +477,7 @@ export default function ProjectDetails() {
                 onChange={(e) => setEditForm({ ...editForm, isPersonal: e.target.checked })}
                 className="w-3.5 h-3.5 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500"
               />
-              <span>Personal</span>
+              <span>Gasto Personal</span>
             </label>
           </div>
 
@@ -455,7 +546,12 @@ export default function ProjectDetails() {
             )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            {exp.category || 'General'} • Pagado por <span className="text-slate-300 font-medium">{exp.paidBy?.name || 'Tú'}</span>
+            {exp.category || 'General'} • Pagado por <span className="text-indigo-300 font-medium">{exp.paidBy?.name || 'Tú'}</span>
+            {!exp.isPersonal && exp.splitBetween?.length > 0 && (
+              <span className="text-slate-500 ml-1">
+                (dividido entre {exp.splitBetween.length})
+              </span>
+            )}
           </p>
         </div>
 
@@ -573,7 +669,7 @@ export default function ProjectDetails() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Columna Izquierda: Formulario + Historial con Agrupaciones */}
+        {/* Columna Izquierda: Formulario + Historial */}
         <div className="lg:col-span-2 space-y-8">
           
           {/* Formulario Añadir Gasto */}
@@ -598,7 +694,7 @@ export default function ProjectDetails() {
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Café, Souvenir, Gasolina..."
+                  placeholder="Cena, Peajes, Entradas..."
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -645,17 +741,76 @@ export default function ProjectDetails() {
                 </select>
               </div>
 
-              <div className="flex items-center pt-6">
-                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+              {/* Selector de Quién Pagó */}
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Pagado por</label>
+                <select
+                  value={paidBy}
+                  onChange={(e) => setPaidBy(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {project?.members?.map((m, idx) => {
+                    const memberId = String(m?._id || m?.id || m);
+                    const ownerId = String(project?.owner?._id || project?.owner?.id || project?.owner);
+                    const isOwner = memberId === ownerId;
+                    const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+
+                    return (
+                      <option key={`paidby-${memberId}-${idx}`} value={memberId}>
+                        {memberName} {isOwner ? '(Admin)' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Toggle Personal vs Compartido */}
+              <div className="sm:col-span-3 pt-1">
+                <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-300">
                   <input
                     type="checkbox"
                     checked={isPersonal}
                     onChange={(e) => setIsPersonal(e.target.checked)}
                     className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
                   />
-                  <span>Gasto personal (no dividir)</span>
+                  <span>Gasto personal (solo lo asume quien pagó, no entra en el reparto)</span>
                 </label>
               </div>
+
+              {/* Selector de miembros incluidos en el reparto si es compartido */}
+              {!isPersonal && project?.members && project.members.length > 1 && (
+                <div className="sm:col-span-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-slate-400">Dividir gasto entre:</span>
+                    <span className="text-[11px] text-indigo-400">
+                      {selectedMembers.length} seleccionados ({Number(amount ? (Number(amount) / selectedMembers.length).toFixed(2) : 0)} {project.currency}/persona)
+                    </span>
+                  </div>
+                    <div className="flex flex-wrap gap-2">
+                      {project.members.map((m, idx) => {
+                        const memberId = String(m?._id || m?.id || m);
+                        const isIncluded = selectedMembers.some(id => String(id) === memberId);
+                        const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+
+                        return (
+                          <button
+                            key={`split-${memberId}-${idx}`}
+                            type="button"
+                            onClick={() => toggleMemberSplit(memberId)}
+                            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                              isIncluded
+                                ? 'bg-indigo-950/80 border-indigo-600/70 text-indigo-200'
+                                : 'bg-slate-900 border-slate-800 text-slate-500 line-through'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${isIncluded ? 'bg-indigo-400' : 'bg-slate-600'}`}></span>
+                            {memberName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                </div>
+              )}
 
               <div className="sm:col-span-3 flex justify-end pt-2">
                 <button
@@ -713,12 +868,10 @@ export default function ProjectDetails() {
                 No hay gastos que coincidan con los filtros seleccionados.
               </p>
             ) : groupBy === 'none' ? (
-              /* Sin agrupar: Lista pura ordenada de más reciente a más antiguo */
               <div className="divide-y divide-slate-800">
                 {groupedExpenses.map((exp, idx) => renderExpenseItem(exp, idx))}
               </div>
             ) : groupBy === 'date' ? (
-              /* Agrupado por Día: Hoy abierto por defecto, resto en acordeón */
               <div className="space-y-3">
                 {Object.entries(groupedExpenses || {}).map(([d, dayData]) => {
                   const isToday = d === todayStr;
@@ -777,7 +930,6 @@ export default function ProjectDetails() {
                 })}
               </div>
             ) : groupBy === 'category' ? (
-              /* Agrupado por Categoría: Acordeón por categoría con orden cronológico */
               <div className="space-y-3">
                 {Object.entries(groupedExpenses || {}).map(([catName, catData]) => {
                   const isOpen = openAccordions[catName] ?? true;
@@ -824,7 +976,6 @@ export default function ProjectDetails() {
                 })}
               </div>
             ) : (
-              /* Agrupado por Día y Categoría (both) */
               <div className="space-y-4">
                 {Object.entries(groupedExpenses || {}).map(([d, dayData]) => {
                   const isToday = d === todayStr;
@@ -874,8 +1025,78 @@ export default function ProjectDetails() {
           </div>
         </div>
 
-        {/* Columna Derecha: Liquidaciones */}
+        {/* Columna Derecha: Participantes + Liquidaciones */}
         <div className="space-y-6">
+
+          {/* Panel de Participantes */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-400" />
+                <span>Participantes ({project?.members?.length || 0})</span>
+              </div>
+            </h2>
+
+            {/* Formulario de Invitar Miembro */}
+            <form onSubmit={handleAddMember} className="mb-4">
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  required
+                  placeholder="amigo@correo.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isInviting}
+                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>{isInviting ? '...' : 'Añadir'}</span>
+                </button>
+              </div>
+
+              {inviteMsg.text && (
+                <p className={`text-xs mt-2 ${inviteMsg.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {inviteMsg.text}
+                </p>
+              )}
+            </form>
+
+            {/* Lista de miembros */}
+            <div className="divide-y divide-slate-800/60 max-h-56 overflow-y-auto pr-1">
+              {project?.members?.map((m, idx) => {
+                const memberId = String(m?._id || m?.id || m);
+                const ownerId = String(project?.owner?._id || project?.owner?.id || project?.owner);
+                const isOwner = memberId === ownerId;
+                const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+                const memberEmail = m?.email || 'Sin correo';
+
+                return (
+                  <div key={`member-list-${memberId}-${idx}`} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-full bg-indigo-950 border border-indigo-700/60 flex items-center justify-center font-bold text-indigo-300 text-[11px]">
+                        {memberName ? memberName.charAt(0).toUpperCase() : '?'}
+                      </div>
+                      <div>
+                        <p className="font-medium text-white">{memberName}</p>
+                        <p className="text-[11px] text-slate-500">{memberEmail}</p>
+                      </div>
+                    </div>
+                    {isOwner && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-950/40 border border-amber-900/50 px-2 py-0.5 rounded">
+                        <Crown className="w-3 h-3 text-amber-400" /> Creador
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Liquidación Óptima */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
             <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
@@ -891,21 +1112,26 @@ export default function ProjectDetails() {
               </div>
             ) : (
               <div className="space-y-3">
-                {settlements.map((tx, idx) => (
+              {settlements.map((tx, idx) => {
+                const fromName = typeof tx.from === 'object' ? (tx.from?.name || tx.from?.email || 'Participante') : tx.from;
+                const toName = typeof tx.to === 'object' ? (tx.to?.name || tx.to?.email || 'Participante') : tx.to;
+
+                return (
                   <div
                     key={idx}
                     className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-sm"
                   >
                     <div className="flex items-center gap-2 font-medium">
-                      <span className="text-red-400">{tx.from}</span>
+                      <span className="text-red-400">{fromName}</span>
                       <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
-                      <span className="text-emerald-400">{tx.to}</span>
+                      <span className="text-emerald-400">{toName}</span>
                     </div>
                     <span className="font-bold text-white bg-slate-800/80 px-2.5 py-1 rounded-md text-xs">
                       {Number(tx.amount || 0).toFixed(2)} {project?.currency || '€'}
                     </span>
                   </div>
-                ))}
+                );
+              })}
               </div>
             )}
           </div>

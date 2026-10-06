@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
-import { FolderKanban, Plus, Calendar, Euro } from 'lucide-react';
+import { Plus, FolderKanban, Calendar, Euro } from 'lucide-react';
 
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
@@ -39,13 +39,13 @@ useEffect(() => {
           <p className="text-slate-400 text-sm mt-1">Gestiona los balances de tus grupos y eventos</p>
         </div>
 
-        <Link
+        {/* <Link
           to="/projects/new"
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
           <span>Crear Proyecto</span>
-        </Link>
+        </Link> */}
       </div>
 
       {loading ? (
