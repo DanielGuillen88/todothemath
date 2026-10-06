@@ -59,23 +59,28 @@ export const createExpense = async (req, res, next) => {
   }
 };
 
-// @desc    Obtener todos los gastos de un proyecto
+// @desc    Obtener los gastos de un proyecto (filtrando privacidad de gastos personales)
 // @route   GET /api/projects/:projectId/expenses
 // @access  Private
 export const getExpensesByProject = async (req, res, next) => {
   try {
     const { projectId } = req.params;
 
-    const project = await Project.findById(projectId);
-    if (!project) {
-      res.status(404);
-      throw new Error('😅 Gastos de proyecto no encontrado');
-    }
+    // Regla de privacidad:
+    // Mostrar gastos compartidos O gastos personales donde el usuario logueado sea el pagador
+    const filter = {
+      project: projectId,
+      $or: [
+        { isPersonal: false },
+        { isPersonal: { $exists: false } },
+        { isPersonal: true, paidBy: req.user._id }
+      ]
+    };
 
-    const expenses = await Expense.find({ project: projectId })
+    const expenses = await Expense.find(filter)
       .populate('paidBy', 'name email')
       .populate('splitBetween.user', 'name email')
-      .sort({ date: -1 });
+      .sort({ date: -1, createdAt: -1 });
 
     res.status(200).json({
       status: 'success',

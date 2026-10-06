@@ -24,8 +24,24 @@ import {
   Crown
 } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
+
 export default function ProjectDetails() {
   const { id } = useParams();
+  const { user } = useAuth();
+
+  const currentUserId = String(user?._id || user?.id || user?.user?._id || user?.user?.id || '');
+  const currentUserEmail = (user?.email || user?.user?.email || '').toLowerCase().trim();
+
+  const isMe = useCallback((target) => {
+    if (!target) return false;
+    if (typeof target === 'string') {
+      return target === currentUserId || (currentUserEmail && target.toLowerCase() === currentUserEmail);
+    }
+    const targetId = String(target._id || target.id || '');
+    const targetEmail = (target.email || '').toLowerCase().trim();
+    return (currentUserId && targetId === currentUserId) || (currentUserEmail && targetEmail === currentUserEmail);
+  }, [currentUserId, currentUserEmail]);
 
   const [project, setProject] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -36,14 +52,14 @@ export default function ProjectDetails() {
   const [deletingId, setDeletingId] = useState(null);
   const [deletedId, setDeletedId] = useState(null);
 
-  // Formulario de gasto
+  // Formulario de gasto (Gasto personal por defecto)
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Comida / Restaurante');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isPersonal, setIsPersonal] = useState(false);
+  const [isPersonal, setIsPersonal] = useState(true);
   const [paidBy, setPaidBy] = useState('');
-  const [selectedMembers, setSelectedMembers] = useState([]); // Miembros en el reparto
+  const [selectedMembers, setSelectedMembers] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -67,15 +83,10 @@ export default function ProjectDetails() {
     paidBy: '',
   });
 
-  // ID del gasto que está pidiendo confirmación para guardar cambios
   const [confirmSaveId, setConfirmSaveId] = useState(null);
-  // ID del gasto recién editado para feedback visual breve
   const [updatedId, setUpdatedId] = useState(null);
 
-  // Fecha de hoy en formato local
   const todayStr = useMemo(() => new Date().toLocaleDateString(), []);
-
-  // Estado para los acordeones abiertos (Hoy abierto por defecto)
   const [openAccordions, setOpenAccordions] = useState({ [todayStr]: true });
 
   const toggleAccordion = (key) => {
@@ -104,10 +115,10 @@ export default function ProjectDetails() {
 
         if (extracted && (extracted._id || extracted.title)) {
           setProject(extracted);
-          // Si no hay pagador seleccionado en el formulario, asignamos el primer miembro disponible
-          if (!paidBy && extracted.members && extracted.members.length > 0) {
-            setPaidBy(extracted.members[0]._id);
-            setSelectedMembers(extracted.members.map(m => m._id));
+          if (!paidBy) {
+            const defaultPayer = currentUserId || extracted.members?.[0]?._id;
+            setPaidBy(defaultPayer);
+            setSelectedMembers(extracted.members.map(m => m._id || m));
           }
         }
       }
@@ -131,13 +142,61 @@ export default function ProjectDetails() {
     } finally {
       if (!isSilent) setLoading(false);
     }
-  }, [id, paidBy]);
+  }, [id, paidBy, currentUserId]);
 
   useEffect(() => {
     loadProjectData();
   }, [loadProjectData]);
 
-  // Manejar adición de miembros
+  // Cuota calculada para un gasto individual
+  const getMyShareForExpense = useCallback((exp) => {
+    const rawAmount = Number(exp?.amount || 0);
+    if (!rawAmount || rawAmount <= 0) return 0;
+
+    if (exp.isPersonal) {
+      return isMe(exp.paidBy) ? rawAmount : 0;
+    }
+
+    if (Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0) {
+      const mySplitItem = exp.splitBetween.find(item => isMe(item.user) || isMe(item));
+      if (mySplitItem) {
+        return Number(mySplitItem.share ?? (rawAmount / exp.splitBetween.length));
+      }
+      return 0;
+    }
+
+    const totalMembers = project?.members?.length || 1;
+    return Number((rawAmount / totalMembers).toFixed(2));
+  }, [isMe, project?.members]);
+
+  // Métricas desglosadas
+  const metrics = useMemo(() => {
+    let myRealShareTotal = 0;
+    let totalProjectShared = 0;
+    let myPersonalOnlyTotal = 0;
+
+    expenses.forEach((exp) => {
+      const rawAmount = Number(exp.amount || 0);
+      const isPaidByMe = isMe(exp.paidBy);
+
+      if (exp.isPersonal) {
+        if (isPaidByMe) {
+          myRealShareTotal += rawAmount;
+          myPersonalOnlyTotal += rawAmount;
+        }
+      } else {
+        totalProjectShared += rawAmount;
+        myRealShareTotal += getMyShareForExpense(exp);
+      }
+    });
+
+    return {
+      myRealTotal: myRealShareTotal,
+      totalShared: totalProjectShared,
+      myPersonal: myPersonalOnlyTotal,
+    };
+  }, [expenses, isMe, getMyShareForExpense]);
+
   const handleAddMember = async (e) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
@@ -168,11 +227,10 @@ export default function ProjectDetails() {
     }
   };
 
-  // Toggle de miembros en el reparto
   const toggleMemberSplit = (memberId) => {
     setSelectedMembers(prev => {
       if (prev.includes(memberId)) {
-        if (prev.length === 1) return prev; // Mantener al menos 1
+        if (prev.length === 1) return prev;
         return prev.filter(m => m !== memberId);
       } else {
         return [...prev, memberId];
@@ -205,7 +263,7 @@ export default function ProjectDetails() {
       category,
       date: date ? new Date(date).toISOString() : new Date().toISOString(),
       isPersonal: Boolean(isPersonal),
-      paidBy: paidBy || project?.members?.[0]?._id,
+      paidBy: isPersonal ? currentUserId : (paidBy || currentUserId || project?.members?.[0]?._id),
       splitBetween: isPersonal ? undefined : splitPayload,
     };
 
@@ -217,9 +275,10 @@ export default function ProjectDetails() {
       setAmount('');
       setCategory('Comida / Restaurante');
       setDate(new Date().toISOString().split('T')[0]);
-      setIsPersonal(false);
+      setIsPersonal(true);
+      setPaidBy(currentUserId || project?.members?.[0]?._id);
       if (project?.members) {
-        setSelectedMembers(project.members.map(m => m._id));
+        setSelectedMembers(project.members.map(m => m._id || m));
       }
 
       await loadProjectData(true);
@@ -301,7 +360,6 @@ export default function ProjectDetails() {
     }
   };
 
-  // Filtrado de gastos
   const filteredExpenses = useMemo(() => {
     return expenses.filter(exp => {
       if (filterType === 'shared') return !exp.isPersonal;
@@ -310,7 +368,7 @@ export default function ProjectDetails() {
     });
   }, [expenses, filterType]);
 
-  // Agrupación flexible
+  // Agrupación de gastos con cálculo exacto de cuotas
   const groupedExpenses = useMemo(() => {
     if (groupBy === 'none') {
       return [...filteredExpenses].sort((a, b) => 
@@ -326,9 +384,10 @@ export default function ProjectDetails() {
       const groups = {};
       sorted.forEach(exp => {
         const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
-        if (!groups[d]) groups[d] = { total: 0, items: [] };
+        if (!groups[d]) groups[d] = { myTotal: 0, groupTotal: 0, items: [] };
         groups[d].items.push(exp);
-        groups[d].total += Number(exp.amount || 0);
+        groups[d].myTotal += getMyShareForExpense(exp);
+        groups[d].groupTotal += Number(exp.amount || 0);
       });
       return groups;
     }
@@ -337,9 +396,10 @@ export default function ProjectDetails() {
       const groups = {};
       filteredExpenses.forEach(exp => {
         const cat = exp.category || 'Sin categoría';
-        if (!groups[cat]) groups[cat] = { total: 0, items: [] };
+        if (!groups[cat]) groups[cat] = { myTotal: 0, groupTotal: 0, items: [] };
         groups[cat].items.push(exp);
-        groups[cat].total += Number(exp.amount || 0);
+        groups[cat].myTotal += getMyShareForExpense(exp);
+        groups[cat].groupTotal += Number(exp.amount || 0);
       });
 
       Object.keys(groups).forEach(cat => {
@@ -360,12 +420,22 @@ export default function ProjectDetails() {
       sorted.forEach(exp => {
         const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
         const cat = exp.category || 'Sin categoría';
-        if (!groups[d]) groups[d] = { total: 0, categories: {} };
-        if (!groups[d].categories[cat]) groups[d].categories[cat] = { total: 0, items: [] };
-        
+        const share = getMyShareForExpense(exp);
+        const raw = Number(exp.amount || 0);
+
+        if (!groups[d]) {
+          groups[d] = { myTotal: 0, groupTotal: 0, categories: {} };
+        }
+        if (!groups[d].categories[cat]) {
+          groups[d].categories[cat] = { myTotal: 0, groupTotal: 0, items: [] };
+        }
+
         groups[d].categories[cat].items.push(exp);
-        groups[d].categories[cat].total += Number(exp.amount || 0);
-        groups[d].total += Number(exp.amount || 0);
+        groups[d].categories[cat].myTotal += share;
+        groups[d].categories[cat].groupTotal += raw;
+
+        groups[d].myTotal += share;
+        groups[d].groupTotal += raw;
       });
 
       Object.values(groups).forEach(day => {
@@ -380,7 +450,7 @@ export default function ProjectDetails() {
     }
 
     return null;
-  }, [filteredExpenses, groupBy]);
+  }, [filteredExpenses, groupBy, getMyShareForExpense]);
 
   const renderExpenseItem = (exp, idx) => {
     const isConfirmingDelete = deletingId === exp._id;
@@ -388,6 +458,10 @@ export default function ProjectDetails() {
     const isEditing = editingId === exp._id;
     const isConfirmingSave = confirmSaveId === exp._id;
     const isUpdated = updatedId === exp._id;
+
+    const myShare = getMyShareForExpense(exp);
+    const paidByMe = isMe(exp.paidBy);
+    const payerName = paidByMe ? 'Tú' : (exp.paidBy?.name || 'Otro miembro');
 
     if (isDeleted) {
       return (
@@ -453,21 +527,20 @@ export default function ProjectDetails() {
               <option value="Otros">Otros</option>
             </select>
 
-            {/* Selector de pagador en edición */}
             <select
               value={editForm.paidBy}
               onChange={(e) => setEditForm({ ...editForm, paidBy: e.target.value })}
               className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
             >
-            {project?.members?.map((m, idx) => {
-              const memberId = m?._id || m;
-              const memberName = m?.name || `Usuario (${String(memberId).slice(-4)})`;
-              return (
-                <option key={memberId || idx} value={memberId}>
-                  Pagado por: {memberName}
-                </option>
-              );
-            })}
+              {project?.members?.map((m, mIdx) => {
+                const memberId = m?._id || m;
+                const memberName = m?.name || `Usuario (${String(memberId).slice(-4)})`;
+                return (
+                  <option key={memberId || mIdx} value={memberId}>
+                    Pagado por: {memberName}
+                  </option>
+                );
+              })}
             </select>
 
             <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
@@ -528,10 +601,11 @@ export default function ProjectDetails() {
     return (
       <div 
         key={exp._id || idx} 
-        className={`py-3 px-3 hover:bg-slate-800/40 rounded-lg flex items-center justify-between transition-colors group ${
+        className={`py-3.5 px-3 hover:bg-slate-800/40 rounded-xl flex items-center justify-between transition-colors group ${
           isConfirmingDelete ? 'bg-red-950/20 border border-red-900/50' : ''
         }`}
       >
+        {/* Información izquierda: Concepto, badge y detalles */}
         <div className="flex-1 min-w-0 pr-4">
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold text-white truncate">{exp.title}</p>
@@ -545,17 +619,28 @@ export default function ProjectDetails() {
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {exp.category || 'General'} • Pagado por <span className="text-indigo-300 font-medium">{exp.paidBy?.name || 'Tú'}</span>
+          
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400 mt-1">
+            {groupBy !== 'category' && groupBy !== 'both' && (
+              <>
+                <span className="text-slate-300 font-medium">{exp.category || 'General'}</span>
+                <span>•</span>
+              </>
+            )}
+            <span>
+              Pagado por <span className="text-slate-200 font-medium">{payerName}</span>
+            </span>
             {!exp.isPersonal && exp.splitBetween?.length > 0 && (
-              <span className="text-slate-500 ml-1">
+              <span className="text-slate-500">
                 (dividido entre {exp.splitBetween.length})
               </span>
             )}
-          </p>
+          </div>
         </div>
 
+        {/* Zona derecha: Acciones primero, luego importes en el extremo alineados con el total del día */}
         <div className="flex items-center gap-3 shrink-0">
+          {/* Botones de Acción (Editar / Eliminar) */}
           {isConfirmingDelete ? (
             <div className="flex items-center gap-2 bg-slate-950/90 border border-red-900/60 px-2.5 py-1.5 rounded-lg shadow-inner">
               <span className="text-xs text-red-300 font-medium mr-1">¿Eliminar?</span>
@@ -575,16 +660,7 @@ export default function ProjectDetails() {
               </button>
             </div>
           ) : (
-            <>
-              <div className="text-right">
-                <p className="text-sm font-bold text-emerald-400">
-                  {Number(exp.amount || 0).toFixed(2)} {project?.currency || '€'}
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  {new Date(exp.date || exp.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => startEditing(exp)}
                 title="Editar gasto"
@@ -600,8 +676,34 @@ export default function ProjectDetails() {
               >
                 <Trash2 className="w-4 h-4" />
               </button>
-            </>
+            </div>
           )}
+
+          {/* Bloque numérico en el extremo derecho */}
+          <div className="text-right flex flex-col items-end min-w-[85px]">
+            <div className="flex items-center gap-1.5">
+              {!exp.isPersonal && <span className="text-[11px] text-slate-500">Total:</span>}
+              <span className={`text-sm font-bold ${exp.isPersonal ? 'text-emerald-400' : 'text-white'}`}>
+                {Number(exp.amount || 0).toFixed(2)} {project?.currency || '€'}
+              </span>
+            </div>
+            
+            {!exp.isPersonal && (
+              <div className="flex items-center gap-1 text-xs mt-0.5">
+                <span className="text-slate-400">Tu parte:</span>
+                <span className="font-semibold text-emerald-400">
+                  {myShare.toFixed(2)} {project?.currency || '€'}
+                </span>
+              </div>
+            )}
+
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              {groupBy === 'date' || groupBy === 'both'
+                ? new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : `${new Date(exp.date || exp.createdAt).toLocaleDateString()} • ${new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              }
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -649,22 +751,78 @@ export default function ProjectDetails() {
             <p className="text-slate-400 text-sm mt-1">{project?.description || 'Sin descripción'}</p>
           </div>
 
-          <div className="flex items-center gap-6 bg-slate-950 px-5 py-3 rounded-xl border border-slate-800 self-start sm:self-auto">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 bg-slate-950 px-5 py-3 rounded-xl border border-slate-800 self-start sm:self-auto">
+            {/* Total Personales */}
             <div>
-              <p className="text-xs text-slate-500">Total Gastado</p>
-              <p className="text-base font-bold text-emerald-400">
-                {expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0).toFixed(2)} {project?.currency || '€'}
+              <p className="text-xs text-slate-400 font-medium">Personales</p>
+              <p className="text-base sm:text-lg font-bold text-slate-200">
+                {metrics.myPersonal.toFixed(2)} {project?.currency || '€'}
               </p>
             </div>
-            <div className="h-8 w-px bg-slate-800"></div>
+
+            <div className="h-8 w-px bg-slate-800 hidden sm:block"></div>
+
+            {/* Total junto a gastos compartidos */}
             <div>
-              <p className="text-xs text-slate-500">Presupuesto</p>
-              <p className="text-base font-bold text-indigo-400">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-slate-400 font-medium">Total</p>
+              </div>
+              <p className="text-base sm:text-lg font-bold text-emerald-400">
+                {metrics.myRealTotal.toFixed(2)} {project?.currency || '€'}
+              </p>
+            </div>
+
+            <div className="h-8 w-px bg-slate-800 hidden sm:block"></div>
+
+            {/* Presupuesto */}
+            <div>
+              <p className="text-xs text-slate-400 font-medium">Presupuesto</p>
+              <p className="text-base sm:text-lg font-bold text-indigo-400">
                 {project?.budget ? `${project.budget} ${project?.currency || '€'}` : 'Sin límite'}
               </p>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Liquidación Óptima */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl">
+        <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          <span>Liquidación Óptima</span>
+        </h2>
+        <p className="text-xs text-slate-400 mb-6">
+          Transacciones calculadas para deudas compartidas (los gastos personales se excluyen automáticamente).
+        </p>
+
+        {settlements.length === 0 ? (
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-6 text-center text-slate-400 text-sm">
+            No hay deudas pendientes entre los participantes.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {settlements.map((tx, idx) => {
+              const fromName = typeof tx.from === 'object' ? (tx.from?.name || tx.from?.email || 'Participante') : tx.from;
+              const toName = typeof tx.to === 'object' ? (tx.to?.name || tx.to?.email || 'Participante') : tx.to;
+
+              return (
+                <div
+                  key={idx}
+                  className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-sm"
+                >
+                  <div className="flex items-center gap-2 font-medium">
+                    <span className="text-red-400">{fromName}</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="text-emerald-400">{toName}</span>
+                  </div>
+                  <span className="font-bold text-white bg-slate-800/80 px-2.5 py-1 rounded-md text-xs">
+                    {Number(tx.amount || 0).toFixed(2)} {project?.currency || '€'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -741,28 +899,31 @@ export default function ProjectDetails() {
                 </select>
               </div>
 
-              {/* Selector de Quién Pagó */}
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Pagado por</label>
-                <select
-                  value={paidBy}
-                  onChange={(e) => setPaidBy(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                >
-                  {project?.members?.map((m, idx) => {
-                    const memberId = String(m?._id || m?.id || m);
-                    const ownerId = String(project?.owner?._id || project?.owner?.id || project?.owner);
-                    const isOwner = memberId === ownerId;
-                    const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+              {/* Selector de Quién Pagó (Solo visible si es compartido) */}
+              {!isPersonal && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">Pagado por</label>
+                  <select
+                    value={paidBy}
+                    onChange={(e) => setPaidBy(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    {project?.members?.map((m, idx) => {
+                      const memberId = String(m?._id || m?.id || m);
+                      const ownerId = String(project?.owner?._id || project?.owner?.id || project?.owner);
+                      const isOwner = memberId === ownerId;
+                      const isCurrent = memberId === currentUserId;
+                      const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
 
-                    return (
-                      <option key={`paidby-${memberId}-${idx}`} value={memberId}>
-                        {memberName} {isOwner ? '(Admin)' : ''}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+                      return (
+                        <option key={`paidby-${memberId}-${idx}`} value={memberId}>
+                          {memberName} {isCurrent ? '(Tú)' : ''} {isOwner ? '👑' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
 
               {/* Toggle Personal vs Compartido */}
               <div className="sm:col-span-3 pt-1">
@@ -777,7 +938,7 @@ export default function ProjectDetails() {
                 </label>
               </div>
 
-              {/* Selector de miembros incluidos en el reparto si es compartido */}
+              {/* Selector de reparto si es compartido */}
               {!isPersonal && project?.members && project.members.length > 1 && (
                 <div className="sm:col-span-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
                   <div className="flex items-center justify-between mb-2">
@@ -786,29 +947,29 @@ export default function ProjectDetails() {
                       {selectedMembers.length} seleccionados ({Number(amount ? (Number(amount) / selectedMembers.length).toFixed(2) : 0)} {project.currency}/persona)
                     </span>
                   </div>
-                    <div className="flex flex-wrap gap-2">
-                      {project.members.map((m, idx) => {
-                        const memberId = String(m?._id || m?.id || m);
-                        const isIncluded = selectedMembers.some(id => String(id) === memberId);
-                        const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+                  <div className="flex flex-wrap gap-2">
+                    {project.members.map((m, idx) => {
+                      const memberId = String(m?._id || m?.id || m);
+                      const isIncluded = selectedMembers.some(mid => String(mid) === memberId);
+                      const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
 
-                        return (
-                          <button
-                            key={`split-${memberId}-${idx}`}
-                            type="button"
-                            onClick={() => toggleMemberSplit(memberId)}
-                            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-                              isIncluded
-                                ? 'bg-indigo-950/80 border-indigo-600/70 text-indigo-200'
-                                : 'bg-slate-900 border-slate-800 text-slate-500 line-through'
-                            }`}
-                          >
-                            <span className={`w-2 h-2 rounded-full ${isIncluded ? 'bg-indigo-400' : 'bg-slate-600'}`}></span>
-                            {memberName}
-                          </button>
-                        );
-                      })}
-                    </div>
+                      return (
+                        <button
+                          key={`split-${memberId}-${idx}`}
+                          type="button"
+                          onClick={() => toggleMemberSplit(memberId)}
+                          className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isIncluded
+                              ? 'bg-indigo-950/80 border-indigo-600/70 text-indigo-200'
+                              : 'bg-slate-900 border-slate-800 text-slate-500 line-through'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${isIncluded ? 'bg-indigo-400' : 'bg-slate-600'}`}></span>
+                          {memberName}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -913,10 +1074,15 @@ export default function ProjectDetails() {
                         </div>
 
                         <div className="text-right">
-                          <span className="text-xs text-slate-400 font-medium mr-1.5">Total día:</span>
+                          <span className="text-xs text-slate-400 font-medium mr-1.5">Tu total día:</span>
                           <span className="text-sm font-bold text-emerald-400">
-                            {dayData.total.toFixed(2)} {project?.currency || '€'}
+                            {dayData.myTotal.toFixed(2)} {project?.currency || '€'}
                           </span>
+                          {dayData.groupTotal !== dayData.myTotal && (
+                            <span className="text-[11px] text-slate-500 ml-2 hidden sm:inline">
+                              (Grupo: {dayData.groupTotal.toFixed(2)} {project?.currency || '€'})
+                            </span>
+                          )}
                         </div>
                       </button>
 
@@ -959,10 +1125,15 @@ export default function ProjectDetails() {
                         </div>
 
                         <div className="text-right">
-                          <span className="text-xs text-slate-400 font-medium mr-1.5">Total categoría:</span>
+                          <span className="text-xs text-slate-400 font-medium mr-1.5">Tu total:</span>
                           <span className="text-sm font-bold text-emerald-400">
-                            {catData.total.toFixed(2)} {project?.currency || '€'}
+                            {catData.myTotal.toFixed(2)} {project?.currency || '€'}
                           </span>
+                          {catData.groupTotal !== catData.myTotal && (
+                            <span className="text-[11px] text-slate-500 ml-2 hidden sm:inline">
+                              (Grupo: {catData.groupTotal.toFixed(2)} {project?.currency || '€'})
+                            </span>
+                          )}
                         </div>
                       </button>
 
@@ -976,6 +1147,7 @@ export default function ProjectDetails() {
                 })}
               </div>
             ) : (
+              /* Vista doble: Día y Categoría */
               <div className="space-y-4">
                 {Object.entries(groupedExpenses || {}).map(([d, dayData]) => {
                   const isToday = d === todayStr;
@@ -997,9 +1169,16 @@ export default function ProjectDetails() {
                             </span>
                           )}
                         </div>
-                        <span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
-                          Total día: {dayData.total.toFixed(2)} {project?.currency || '€'}
-                        </span>
+                        <div className="text-right">
+                          <span className="text-xs font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
+                            Tu total día: {dayData.myTotal.toFixed(2)} {project?.currency || '€'}
+                          </span>
+                          {dayData.groupTotal !== dayData.myTotal && (
+                            <span className="text-[11px] text-slate-500 ml-2 hidden sm:inline">
+                              (Grupo: {dayData.groupTotal.toFixed(2)} {project?.currency || '€'})
+                            </span>
+                          )}
+                        </div>
                       </button>
 
                       {isOpen && (
@@ -1008,7 +1187,16 @@ export default function ProjectDetails() {
                             <div key={catName}>
                               <div className="flex justify-between items-center text-xs text-slate-400 mb-1 font-medium bg-slate-900/50 px-2 py-1 rounded">
                                 <span>{catName} ({catData.items.length})</span>
-                                <span className="text-emerald-400 font-semibold">{catData.total.toFixed(2)} {project?.currency || '€'}</span>
+                                <div className="text-right">
+                                  <span className="text-emerald-400 font-semibold mr-1.5">
+                                    Tu parte: {catData.myTotal.toFixed(2)} {project?.currency || '€'}
+                                  </span>
+                                  {catData.groupTotal !== catData.myTotal && (
+                                    <span className="text-[10px] text-slate-500 hidden sm:inline">
+                                      (Grupo: {catData.groupTotal.toFixed(2)} {project?.currency || '€'})
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <div className="divide-y divide-slate-800/40">
                                 {catData.items.map((exp, idx) => renderExpenseItem(exp, idx))}
@@ -1025,10 +1213,8 @@ export default function ProjectDetails() {
           </div>
         </div>
 
-        {/* Columna Derecha: Participantes + Liquidaciones */}
+        {/* Columna Derecha: Participantes */}
         <div className="space-y-6">
-
-          {/* Panel de Participantes */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1037,7 +1223,6 @@ export default function ProjectDetails() {
               </div>
             </h2>
 
-            {/* Formulario de Invitar Miembro */}
             <form onSubmit={handleAddMember} className="mb-4">
               <div className="flex gap-2">
                 <input
@@ -1065,7 +1250,6 @@ export default function ProjectDetails() {
               )}
             </form>
 
-            {/* Lista de miembros */}
             <div className="divide-y divide-slate-800/60 max-h-56 overflow-y-auto pr-1">
               {project?.members?.map((m, idx) => {
                 const memberId = String(m?._id || m?.id || m);
@@ -1094,46 +1278,6 @@ export default function ProjectDetails() {
                 );
               })}
             </div>
-          </div>
-
-          {/* Liquidación Óptima */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <span>Liquidación Óptima</span>
-            </h2>
-            <p className="text-xs text-slate-400 mb-6">
-              Transacciones calculadas para deudas compartidas (los gastos personales se excluyen automáticamente).
-            </p>
-
-            {settlements.length === 0 ? (
-              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-6 text-center text-slate-400 text-sm">
-                No hay deudas pendientes entre los participantes.
-              </div>
-            ) : (
-              <div className="space-y-3">
-              {settlements.map((tx, idx) => {
-                const fromName = typeof tx.from === 'object' ? (tx.from?.name || tx.from?.email || 'Participante') : tx.from;
-                const toName = typeof tx.to === 'object' ? (tx.to?.name || tx.to?.email || 'Participante') : tx.to;
-
-                return (
-                  <div
-                    key={idx}
-                    className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-sm"
-                  >
-                    <div className="flex items-center gap-2 font-medium">
-                      <span className="text-red-400">{fromName}</span>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
-                      <span className="text-emerald-400">{toName}</span>
-                    </div>
-                    <span className="font-bold text-white bg-slate-800/80 px-2.5 py-1 rounded-md text-xs">
-                      {Number(tx.amount || 0).toFixed(2)} {project?.currency || '€'}
-                    </span>
-                  </div>
-                );
-              })}
-              </div>
-            )}
           </div>
         </div>
 
