@@ -598,27 +598,21 @@ export default function ProjectDetails() {
       );
     }
 
+    // Estilos dinámicos según el tipo de gasto
+    const cardTypeStyles = exp.isPersonal
+      ? 'bg-amber-950/20 hover:bg-amber-950/30 border-amber-900/40 border-l-4 border-l-amber-500'
+      : 'bg-indigo-950/20 hover:bg-indigo-950/30 border-indigo-900/40 border-l-4 border-l-indigo-500';
+
     return (
       <div 
         key={exp._id || idx} 
-        className={`py-3.5 px-3 hover:bg-slate-800/40 rounded-xl flex items-center justify-between transition-colors group ${
-          isConfirmingDelete ? 'bg-red-950/20 border border-red-900/50' : ''
+        className={`py-3.5 px-3.5 my-1.5 rounded-xl border flex items-center justify-between transition-all group ${cardTypeStyles} ${
+          isConfirmingDelete ? '!bg-red-950/30 !border-red-900/70 !border-l-red-500' : ''
         }`}
       >
-        {/* Información izquierda: Concepto, badge y detalles */}
+        {/* Información izquierda: Concepto y detalles */}
         <div className="flex-1 min-w-0 pr-4">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold text-white truncate">{exp.title}</p>
-            {exp.isPersonal ? (
-              <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/40 shrink-0">
-                <UserCheck className="w-3 h-3" /> Personal
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/40 shrink-0">
-                <Users className="w-3 h-3" /> Compartido
-              </span>
-            )}
-          </div>
+          <p className="text-sm font-semibold text-white truncate">{exp.title}</p>
           
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400 mt-1">
             {groupBy !== 'category' && groupBy !== 'both' && (
@@ -627,33 +621,40 @@ export default function ProjectDetails() {
                 <span>•</span>
               </>
             )}
-            {/* Pagado por y fecha de introduccion de datos */}
+            
+            {/* Pagado por */}
             <span>
               💰 por <span className="text-slate-200 font-medium">{payerName}</span>
             </span>
-            <span>a las <span className="text-slate-200 font-medium">
-              {groupBy === 'date' || groupBy === 'both'
-                ? new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : `${new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${new Date(exp.date || exp.createdAt).toLocaleDateString()}`
-              }
-            </span>
+            
+            {/* Hora / Fecha */}
+            <span>
+              a las{' '}
+              <span className="text-slate-200 font-medium">
+                {groupBy === 'date' || groupBy === 'both'
+                  ? new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : `${new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${new Date(exp.date || exp.createdAt).toLocaleDateString()}`
+                }
+              </span>
             </span>
 
+            {/* Reparto */}
             {!exp.isPersonal && exp.splitBetween?.length > 0 && (
-              <span className="text-slate-500">
+              <span className="text-indigo-300/80 font-medium">
                 (➗ {exp.splitBetween.length})
               </span>
             )}
           </div>
         </div>
 
-        {/* Zona derecha: Acciones primero, luego importes en el extremo alineados con el total del día */}
+        {/* Zona derecha: Acciones primero, luego importes */}
         <div className="flex items-center gap-3 shrink-0">
           {/* Botones de Acción (Editar / Eliminar) */}
           {isConfirmingDelete ? (
             <div className="flex items-center gap-2 bg-slate-950/90 border border-red-900/60 px-2.5 py-1.5 rounded-lg shadow-inner">
               <span className="text-xs text-red-300 font-medium mr-1">¿Eliminar?</span>
               <button
+                type="button"
                 onClick={() => handleDeleteExpense(exp._id)}
                 title="Confirmar eliminación"
                 className="p-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer"
@@ -661,6 +662,7 @@ export default function ProjectDetails() {
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
+                type="button"
                 onClick={() => setDeletingId(null)}
                 title="Cancelar"
                 className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
@@ -671,17 +673,19 @@ export default function ProjectDetails() {
           ) : (
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => startEditing(exp)}
                 title="Editar gasto"
-                className="text-slate-500 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-indigo-950/30 transition-colors cursor-pointer"
+                className="text-slate-500 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-900/60 transition-colors cursor-pointer"
               >
                 <Pencil className="w-4 h-4" />
               </button>
 
               <button
+                type="button"
                 onClick={() => setDeletingId(exp._id)}
                 title="Eliminar gasto"
-                className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-950/30 transition-colors cursor-pointer"
+                className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-900/60 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -699,29 +703,14 @@ export default function ProjectDetails() {
                 </span>
               </div>
             )}
-
             <div className="flex items-center gap-1.5">
-              {/* {!exp.isPersonal && <span className="text-[11px] text-slate-500">Total:</span>} */}
+              {/* {!exp.isPersonal && <span className="text-[11px] text-slate-400">Total:</span>} */}
               <span className={`text-xs font-bold ${exp.isPersonal ? 'text-emerald-400' : 'text-white'}`}>
                 {Number(exp.amount || 0).toFixed(2)} {project?.currency || '€'}
               </span>
             </div>
             
-            {/* {!exp.isPersonal && (
-              <div className="flex items-center gap-1 text-xs mt-0.5">
-                <span className="text-slate-400">Tu parte:</span>
-                <span className="font-semibold text-emerald-400">
-                  {myShare.toFixed(2)} {project?.currency || '€'}
-                </span>
-              </div>
-            )} */}
 
-            {/* <p className="text-[10px] text-slate-500 mt-0.5">
-              {groupBy === 'date' || groupBy === 'both'
-                ? new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : `${new Date(exp.date || exp.createdAt).toLocaleDateString()} • ${new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-              }
-            </p> */}
           </div>
         </div>
       </div>
