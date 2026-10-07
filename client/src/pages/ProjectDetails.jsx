@@ -627,9 +627,18 @@ export default function ProjectDetails() {
                 <span>•</span>
               </>
             )}
+            {/* Pagado por y fecha de introduccion de datos */}
             <span>
               💰 por <span className="text-slate-200 font-medium">{payerName}</span>
             </span>
+            <span>a las <span className="text-slate-200 font-medium">
+              {groupBy === 'date' || groupBy === 'both'
+                ? new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : `${new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${new Date(exp.date || exp.createdAt).toLocaleDateString()}`
+              }
+            </span>
+            </span>
+
             {!exp.isPersonal && exp.splitBetween?.length > 0 && (
               <span className="text-slate-500">
                 (➗ {exp.splitBetween.length})
@@ -707,12 +716,12 @@ export default function ProjectDetails() {
               </div>
             )} */}
 
-            <p className="text-[10px] text-slate-500 mt-0.5">
+            {/* <p className="text-[10px] text-slate-500 mt-0.5">
               {groupBy === 'date' || groupBy === 'both'
                 ? new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 : `${new Date(exp.date || exp.createdAt).toLocaleDateString()} • ${new Date(exp.createdAt || exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
               }
-            </p>
+            </p> */}
           </div>
         </div>
       </div>
