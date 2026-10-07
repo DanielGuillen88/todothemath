@@ -20,7 +20,7 @@ const expenseSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      default: 'Comida / Restaurante',
+      default: 'Comida',
       trim: true,
     },
     date: {

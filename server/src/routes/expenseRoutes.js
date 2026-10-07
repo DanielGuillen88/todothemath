@@ -1,26 +1,30 @@
-import { Router } from 'express';
+import express from 'express';
 import {
-  createExpense,
   getExpensesByProject,
+  createExpense,
   getProjectBalances,
-  deleteExpense,
   updateExpense,
+  deleteExpense
 } from '../controllers/expenseController.js';
 import { protect } from '../middlewares/auth.js';
 
-// mergeParams permite acceder al :projectId definido en el router superior
-const router = Router({ mergeParams: true });
+// ¡IMPORTANTE!: mergeParams: true para heredar :projectId o :id desde projectRoutes
+const router = express.Router({ mergeParams: true });
 
 router.use(protect);
 
-router.route('/')
-  .post(createExpense)
-  .get(getExpensesByProject);
+// /api/projects/:id/expenses/balances
+router.get('/balances', getProjectBalances);
 
-router.route('/balances')
-  .get(getProjectBalances);
+// /api/projects/:id/expenses
+router
+  .route('/')
+  .get(getExpensesByProject)
+  .post(createExpense);
 
-router.route('/:expenseId')
+// /api/projects/:id/expenses/:expenseId
+router
+  .route('/:expenseId')
   .put(updateExpense)
   .delete(deleteExpense);
 

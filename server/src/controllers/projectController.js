@@ -1,5 +1,6 @@
 import { User } from '../models/User.js';
 import { Project } from '../models/Project.js';
+import { Expense } from '../models/Expense.js';
 
 // @desc    Crear un nuevo proyecto (viaje, evento, reforma)
 // @route   POST /api/projects
@@ -35,9 +36,8 @@ export const createProject = async (req, res, next) => {
 // @desc    Obtener todos los proyectos del usuario autenticado
 // @route   GET /api/projects
 // @access  Private
-export const getMyProjects = async (req, res, next) => {
+export const getProjects = async (req, res, next) => {
   try {
-    // Proyectos donde el usuario es el dueño o es miembro
     const projects = await Project.find({
       $or: [{ owner: req.user._id }, { members: req.user._id }]
     })
@@ -65,74 +65,26 @@ export const getProjectById = async (req, res, next) => {
       .populate('members', 'name email');
 
     if (!project) {
-      res.status(404);
-      throw new Error('😵 Proyecto no encontrado');
+      return res.status(404).json({ status: 'fail', message: 'Proyecto no encontrado' });
     }
 
-    // Verificar que el usuario pertenece al proyecto
-    const isMember = project.members.some(
-      (m) => m._id.toString() === req.user._id.toString()
-    );
+    const currentUserId = req.user._id.toString();
+    const ownerId = String(project.owner?._id || project.owner || '');
 
-    if (!isMember && project.owner._id.toString() !== req.user._id.toString()) {
-      res.status(403);
-      throw new Error('⛔️ No tienes acceso a este proyecto');
-    }
-
-    res.status(200).json({
-      status: 'success',
-      data: { project }
+    // Comprobación segura de membresía
+    const isMember = Array.isArray(project.members) && project.members.some((m) => {
+      const mId = String(m?._id || m?.id || m);
+      return mId === currentUserId;
     });
-  } catch (error) {
-    next(error);
-  }
-};
 
-// @desc    Añadir un miembro al proyecto por correo electrónico
-// @route   POST /api/projects/:id/members
-// @access  Private (Solo el owner)
-export const addMember = async (req, res, next) => {
-  try {
-    const { email } = req.body;
+    const isOwner = ownerId === currentUserId;
 
-    if (!email) {
-      res.status(400);
-      throw new Error('Debes indicar el email del usuario a añadir ‼️');
+    if (!isMember && !isOwner) {
+      return res.status(403).json({ status: 'fail', message: 'No tienes acceso a este proyecto' });
     }
-
-    const project = await Project.findById(req.params.id);
-
-    if (!project) {
-      res.status(404);
-      throw new Error('😵 Proyecto no encontrado');
-    }
-
-    if (project.owner.toString() !== req.user._id.toString()) {
-      res.status(403);
-      throw new Error('⛔️ Solo el creador del proyecto puede añadir miembros');
-    }
-
-    // Buscar si el usuario registrado existe
-    const { User } = await import('../models/User.js');
-    const userToAdd = await User.findOne({ email });
-
-    if (!userToAdd) {
-      res.status(404);
-      throw new Error('🙃 No existe ningún usuario registrado con ese email');
-    }
-
-    // Comprobar que no esté ya añadido
-    if (project.members.includes(userToAdd._id)) {
-      res.status(400);
-      throw new Error('👤 El usuario ya forma parte de este proyecto');
-    }
-
-    project.members.push(userToAdd._id);
-    await project.save();
 
     res.status(200).json({
       status: 'success',
-      message: 'Miembro añadido con éxito ✅',
       data: { project }
     });
   } catch (error) {
@@ -159,23 +111,25 @@ export const addMemberToProject = async (req, res, next) => {
       throw new Error('Proyecto no encontrado.');
     }
 
-    // Comprobar que quien invita sea miembro o creador
+    // Comprobar que quien invita sea miembro o el creador
     const isMember = project.members.some(
       (m) => m.toString() === req.user._id.toString()
     );
-    if (!isMember) {
+    const isOwner = project.owner.toString() === req.user._id.toString();
+
+    if (!isMember && !isOwner) {
       res.status(403);
       throw new Error('No tienes permisos para añadir miembros a este proyecto.');
     }
 
-    // Buscar al usuario por email
+    // Buscar al usuario registrado por email
     const userToAdd = await User.findOne({ email: email.toLowerCase().trim() });
     if (!userToAdd) {
       res.status(404);
       throw new Error('No existe ningún usuario registrado con ese email.');
     }
 
-    // Comprobar si ya es miembro
+    // Comprobar si ya forma parte del proyecto
     const alreadyMember = project.members.some(
       (m) => m.toString() === userToAdd._id.toString()
     );
@@ -187,14 +141,91 @@ export const addMemberToProject = async (req, res, next) => {
     project.members.push(userToAdd._id);
     await project.save();
 
+    // Devolvemos el proyecto poblado con owner y members
     const updatedProject = await Project.findById(id)
-      .populate('members', 'name email')
-      .populate('creator', 'name email');
+      .populate('owner', 'name email')
+      .populate('members', 'name email');
 
     res.status(200).json({
       status: 'success',
       message: 'Participante añadido correctamente.',
       data: { project: updatedProject },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProject = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id || id === 'undefined') {
+      return res.status(400).json({ status: 'fail', message: 'ID de proyecto no válido' });
+    }
+
+    const project = await Project.findById(id);
+
+    if (!project) {
+      return res.status(404).json({ status: 'fail', message: 'Proyecto no encontrado' });
+    }
+
+    const currentUserId = req.user._id.toString();
+    const ownerId = String(project.owner?._id || project.owner || '');
+
+    if (ownerId !== currentUserId) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'No tienes permisos para editar este proyecto'
+      });
+    }
+
+    const { title, description, budget, currency, type } = req.body;
+    if (title) project.title = title.trim();
+    if (description !== undefined) project.description = description;
+    if (budget !== undefined) project.budget = Number(budget) || 0;
+    if (currency) project.currency = currency;
+    if (type) project.type = type;
+
+    await project.save();
+
+    const updated = await Project.findById(project._id)
+      .populate('owner', 'name email')
+      .populate('members', 'name email');
+
+    res.status(200).json({
+      status: 'success',
+      data: { project: updated }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Eliminar un proyecto y sus gastos asociados
+// @route   DELETE /api/projects/:id
+// @access  Private (Solo el creador)
+export const deleteProject = async (req, res, next) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({ status: 'fail', message: 'Proyecto no encontrado' });
+    }
+
+    if (project.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'No tienes permisos para eliminar este proyecto (solo el creador puede hacerlo)'
+      });
+    }
+
+    // Eliminar gastos asociados antes de borrar el proyecto
+    await Expense.deleteMany({ project: project._id });
+    await project.deleteOne();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Proyecto y gastos asociados eliminados correctamente'
     });
   } catch (error) {
     next(error);

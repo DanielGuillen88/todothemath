@@ -55,7 +55,7 @@ export default function ProjectDetails() {
   // Formulario de gasto (Gasto personal por defecto)
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Comida / Restaurante');
+  const [category, setCategory] = useState('Otros');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [isPersonal, setIsPersonal] = useState(true);
   const [paidBy, setPaidBy] = useState('');
@@ -273,7 +273,7 @@ export default function ProjectDetails() {
 
       setTitle('');
       setAmount('');
-      setCategory('Comida / Restaurante');
+      setCategory('Otros');
       setDate(new Date().toISOString().split('T')[0]);
       setIsPersonal(true);
       setPaidBy(currentUserId || project?.members?.[0]?._id);
@@ -461,7 +461,7 @@ export default function ProjectDetails() {
 
     const myShare = getMyShareForExpense(exp);
     const paidByMe = isMe(exp.paidBy);
-    const payerName = paidByMe ? 'Tú' : (exp.paidBy?.name || 'Otro miembro');
+    const payerName = paidByMe ? 'Mí' : (exp.paidBy?.name || 'Otro miembro');
 
     if (isDeleted) {
       return (
@@ -518,13 +518,13 @@ export default function ProjectDetails() {
               onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
               className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
             >
-              <option value="Comida / Restaurante">Restaurante</option>
+              <option value="Otros">Otros</option>
+              <option value="Ocio">Ocio</option>
+              <option value="Comida">Comida</option>
               <option value="Transporte">Transporte</option>
               <option value="Alojamiento">Alojamiento</option>
-              <option value="Ocio">Ocio</option>
               <option value="Supermercado">Supermercado</option>
-              <option value="Compras personales">Compras personales</option>
-              <option value="Otros">Otros</option>
+              <option value="Personales">Personales</option>
             </select>
 
             <select
@@ -628,11 +628,11 @@ export default function ProjectDetails() {
               </>
             )}
             <span>
-              Pagado por <span className="text-slate-200 font-medium">{payerName}</span>
+              💰 por <span className="text-slate-200 font-medium">{payerName}</span>
             </span>
             {!exp.isPersonal && exp.splitBetween?.length > 0 && (
               <span className="text-slate-500">
-                (dividido entre {exp.splitBetween.length})
+                (➗ {exp.splitBetween.length})
               </span>
             )}
           </div>
@@ -681,21 +681,31 @@ export default function ProjectDetails() {
 
           {/* Bloque numérico en el extremo derecho */}
           <div className="text-right flex flex-col items-end min-w-[85px]">
+
+            {!exp.isPersonal && (
+              <div className="flex items-center gap-1 text-xs mt-0.5">
+                {/* <span className="text-slate-400">Tu parte:</span> */}
+                <span className="font-semibold text-emerald-400">
+                  {myShare.toFixed(2)} {project?.currency || '€'}
+                </span>
+              </div>
+            )}
+
             <div className="flex items-center gap-1.5">
-              {!exp.isPersonal && <span className="text-[11px] text-slate-500">Total:</span>}
-              <span className={`text-sm font-bold ${exp.isPersonal ? 'text-emerald-400' : 'text-white'}`}>
+              {/* {!exp.isPersonal && <span className="text-[11px] text-slate-500">Total:</span>} */}
+              <span className={`text-xs font-bold ${exp.isPersonal ? 'text-emerald-400' : 'text-white'}`}>
                 {Number(exp.amount || 0).toFixed(2)} {project?.currency || '€'}
               </span>
             </div>
             
-            {!exp.isPersonal && (
+            {/* {!exp.isPersonal && (
               <div className="flex items-center gap-1 text-xs mt-0.5">
                 <span className="text-slate-400">Tu parte:</span>
                 <span className="font-semibold text-emerald-400">
                   {myShare.toFixed(2)} {project?.currency || '€'}
                 </span>
               </div>
-            )}
+            )} */}
 
             <p className="text-[10px] text-slate-500 mt-0.5">
               {groupBy === 'date' || groupBy === 'both'
@@ -889,13 +899,13 @@ export default function ProjectDetails() {
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="Comida / Restaurante">Restaurante</option>
+                  <option value="Otros">Otros</option>
+                  <option value="Ocio">Ocio</option>
+                  <option value="Comida">Comida</option>
                   <option value="Transporte">Transporte</option>
                   <option value="Alojamiento">Alojamiento</option>
-                  <option value="Ocio">Ocio</option>
                   <option value="Supermercado">Supermercado</option>
-                  <option value="Compras personales">Compras personales</option>
-                  <option value="Otros">Otros</option>
+                  <option value="Personales">Personales</option>
                 </select>
               </div>
 
@@ -917,7 +927,7 @@ export default function ProjectDetails() {
 
                       return (
                         <option key={`paidby-${memberId}-${idx}`} value={memberId}>
-                          {memberName} {isCurrent ? '(Tú)' : ''} {isOwner ? '👑' : ''}
+                          {memberName} {isCurrent ? '(Mí)' : ''} {isOwner ? '👑' : ''}
                         </option>
                       );
                     })}
@@ -1074,15 +1084,15 @@ export default function ProjectDetails() {
                         </div>
 
                         <div className="text-right">
-                          <span className="text-xs text-slate-400 font-medium mr-1.5">Tu total día:</span>
+                          {/* <span className="text-xs text-slate-400 font-medium mr-1.5">Tu total día:</span> */}
                           <span className="text-sm font-bold text-emerald-400">
                             {dayData.myTotal.toFixed(2)} {project?.currency || '€'}
                           </span>
-                          {dayData.groupTotal !== dayData.myTotal && (
+                          {/* {dayData.groupTotal !== dayData.myTotal && (
                             <span className="text-[11px] text-slate-500 ml-2 hidden sm:inline">
                               (Grupo: {dayData.groupTotal.toFixed(2)} {project?.currency || '€'})
                             </span>
-                          )}
+                          )} */}
                         </div>
                       </button>
 
@@ -1125,15 +1135,15 @@ export default function ProjectDetails() {
                         </div>
 
                         <div className="text-right">
-                          <span className="text-xs text-slate-400 font-medium mr-1.5">Tu total:</span>
+                          {/* <span className="text-xs text-slate-400 font-medium mr-1.5">Tu total:</span> */}
                           <span className="text-sm font-bold text-emerald-400">
                             {catData.myTotal.toFixed(2)} {project?.currency || '€'}
                           </span>
-                          {catData.groupTotal !== catData.myTotal && (
+                          {/* {catData.groupTotal !== catData.myTotal && (
                             <span className="text-[11px] text-slate-500 ml-2 hidden sm:inline">
                               (Grupo: {catData.groupTotal.toFixed(2)} {project?.currency || '€'})
                             </span>
-                          )}
+                          )} */}
                         </div>
                       </button>
 
@@ -1170,14 +1180,17 @@ export default function ProjectDetails() {
                           )}
                         </div>
                         <div className="text-right">
-                          <span className="text-xs font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
+                          {/* <span className="text-xs font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
                             Tu total día: {dayData.myTotal.toFixed(2)} {project?.currency || '€'}
+                          </span> */}
+                          <span className="text-xs font-bold text-emerald-400 px-2 py-0.5">
+                            {dayData.myTotal.toFixed(2)} {project?.currency || '€'}
                           </span>
-                          {dayData.groupTotal !== dayData.myTotal && (
+                          {/* {dayData.groupTotal !== dayData.myTotal && (
                             <span className="text-[11px] text-slate-500 ml-2 hidden sm:inline">
                               (Grupo: {dayData.groupTotal.toFixed(2)} {project?.currency || '€'})
                             </span>
-                          )}
+                          )} */}
                         </div>
                       </button>
 
@@ -1189,13 +1202,13 @@ export default function ProjectDetails() {
                                 <span>{catName} ({catData.items.length})</span>
                                 <div className="text-right">
                                   <span className="text-emerald-400 font-semibold mr-1.5">
-                                    Tu parte: {catData.myTotal.toFixed(2)} {project?.currency || '€'}
+                                    Subtotal: {catData.myTotal.toFixed(2)} {project?.currency || '€'}
                                   </span>
-                                  {catData.groupTotal !== catData.myTotal && (
+                                  {/* {catData.groupTotal !== catData.myTotal && (
                                     <span className="text-[10px] text-slate-500 hidden sm:inline">
                                       (Grupo: {catData.groupTotal.toFixed(2)} {project?.currency || '€'})
                                     </span>
-                                  )}
+                                  )} */}
                                 </div>
                               </div>
                               <div className="divide-y divide-slate-800/40">
