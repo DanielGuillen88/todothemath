@@ -1,19 +1,11 @@
 import express from 'express';
-import {
-  createProject,
-  getProjects,
-  getProjectById,
-  updateProject,
-  deleteProject,
-  addMemberToProject,
-} from '../controllers/projectController.js';
+import { createProject, getProjects, getProjectById, updateProject, deleteProject, addMemberToProject } from '../controllers/projectController/index.js';
 import { protect } from '../middlewares/auth.js';
-
-// 1. IMPORTAR el router de gastos
-import expenseRouter from './expenseRoutes.js'; // o './expenseRouter.js' según tu nombre de archivo
+import expenseRouter from './expenseRoutes.js';
 
 const router = express.Router();
 
+// requiere estar logueado para acceder a las rutas de proyectos
 router.use(protect);
 
 // 2. REENVIAR /:projectId/expenses al router de gastos

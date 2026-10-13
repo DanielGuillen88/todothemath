@@ -1,40 +1,67 @@
 /**
  * Calcula los balances individuales y simplifica las transferencias mínimas
- * para saldar las deudas de un proyecto.
+ * para saldar las deudas de un proyecto (excluyendo automáticamente gastos personales).
  */
-export const calculateBalancesAndDebts = (expenses, members) => {
+export const calculateBalancesAndDebts = (expenses = [], members = []) => {
   // 1. Inicializar balance en 0 para cada miembro registrado en el proyecto
   const balanceMap = {};
+  
   members.forEach((m) => {
-    balanceMap[m._id.toString()] = {
-      user: { id: m._id, name: m.name, email: m.email },
+    const memberId = String(m?._id || m?.id || m);
+    balanceMap[memberId] = {
+      user: { 
+        id: memberId, 
+        name: m?.name || 'Participante', 
+        email: m?.email || '' 
+      },
       paid: 0,
       owes: 0,
       netBalance: 0
     };
   });
 
-  let totalExpenses = 0;
+  let totalSharedExpenses = 0;
 
   // 2. Procesar cada gasto
   expenses.forEach((expense) => {
-    totalExpenses += expense.amount;
-    const payerId = expense.paidBy._id ? expense.paidBy._id.toString() : expense.paidBy.toString();
-
-    if (balanceMap[payerId]) {
-      balanceMap[payerId].paid += expense.amount;
+    // REGLA CLAVE: Los gastos personales NO generan deuda entre los miembros
+    if (expense.isPersonal) {
+      return;
     }
 
-    // Reparto entre los participantes designados en el gasto
-    expense.splitBetween.forEach((split) => {
-      const debtorId = split.user._id ? split.user._id.toString() : split.user.toString();
-      if (balanceMap[debtorId]) {
-        balanceMap[debtorId].owes += split.share;
-      }
-    });
+    const amount = Number(expense.amount || 0);
+    if (amount <= 0) return;
+
+    totalSharedExpenses += amount;
+
+    const payerId = String(expense.paidBy?._id || expense.paidBy?.id || expense.paidBy || '');
+
+    if (balanceMap[payerId]) {
+      balanceMap[payerId].paid += amount;
+    }
+
+    // Reparto entre los participantes designados en el gasto compartido
+    if (Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0) {
+      expense.splitBetween.forEach((split) => {
+        const debtorId = String(split?.user?._id || split?.user?.id || split?.user || split);
+        const share = Number(split?.share ?? (amount / expense.splitBetween.length));
+        
+        if (balanceMap[debtorId]) {
+          balanceMap[debtorId].owes += share;
+        }
+      });
+    } else {
+      // Fallback: si no hay splitBetween explícito, se divide a partes iguales entre todos los miembros
+      const totalMembersCount = members.length || 1;
+      const sharePerMember = amount / totalMembersCount;
+      
+      Object.keys(balanceMap).forEach((memberId) => {
+        balanceMap[memberId].owes += sharePerMember;
+      });
+    }
   });
 
-  // 3. Calcular balance neto (positivo = recibe dinero, negativo = debe pagar)
+  // 3. Calcular balance neto (positivo = debe recibir dinero, negativo = debe pagar)
   const balances = Object.values(balanceMap).map((item) => {
     const net = Number((item.paid - item.owes).toFixed(2));
     item.netBalance = net;
@@ -43,9 +70,9 @@ export const calculateBalancesAndDebts = (expenses, members) => {
     return item;
   });
 
-  // 4. Calcula balance final y asi evitar transacciones innecesarias
-  const debtors = [];  // Los que deben dinero (balance < 0)
-  const creditors = []; // Los que deben recibir dinero (balance > 0)
+  // 4. Simplificar transacciones (Algoritmo Greedy para mínimas transferencias)
+  const debtors = [];   // Los que deben dinero (netBalance < 0)
+  const creditors = []; // Los que deben recibir dinero (netBalance > 0)
 
   balances.forEach((b) => {
     if (b.netBalance < -0.01) {
@@ -55,8 +82,11 @@ export const calculateBalancesAndDebts = (expenses, members) => {
     }
   });
 
-  const settlements = [];
+  // Ordenar de mayor a menor para optimizar los emparejamientos
+  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amount - a.amount);
 
+  const settlements = [];
   let dIdx = 0;
   let cIdx = 0;
 
@@ -83,7 +113,7 @@ export const calculateBalancesAndDebts = (expenses, members) => {
   }
 
   return {
-    totalExpenses: Number(totalExpenses.toFixed(2)),
+    totalExpenses: Number(totalSharedExpenses.toFixed(2)),
     balances,
     settlements
   };

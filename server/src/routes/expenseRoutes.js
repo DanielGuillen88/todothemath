@@ -1,11 +1,5 @@
 import express from 'express';
-import {
-  getExpensesByProject,
-  createExpense,
-  getProjectBalances,
-  updateExpense,
-  deleteExpense
-} from '../controllers/expenseController.js';
+import { getExpensesByProject, createExpense, getProjectBalances, updateExpense, deleteExpense } from '../controllers/expenseController/index.js';
 import { protect } from '../middlewares/auth.js';
 
 // ¡IMPORTANTE!: mergeParams: true para heredar :projectId o :id desde projectRoutes
