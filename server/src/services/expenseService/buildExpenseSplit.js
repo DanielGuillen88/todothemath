@@ -1,5 +1,6 @@
 /**
  * Calcula el array splitBetween en base a si es gasto personal o compartido
+ * splitBetween es un array con el reparto entre los participantes designados en el gasto compartido
  */
 export const buildExpenseSplit = (amount, isPersonal, userId, projectMembers = [], customSplit) => {
   const numAmount = Number(amount);
