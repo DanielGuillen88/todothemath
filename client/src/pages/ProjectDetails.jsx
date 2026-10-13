@@ -79,7 +79,7 @@ export default function ProjectDetails() {
     amount: '',
     category: '',
     date: '',
-    isPersonal: false,
+    isPersonal: true,
     paidBy: '',
   });
 
@@ -310,17 +310,28 @@ export default function ProjectDetails() {
     }
   };
 
-  const startEditing = (exp) => {
+const startEditing = (exp) => {
     setDeletingId(null);
     setConfirmSaveId(null);
     setEditingId(exp._id);
+
+    // 1. Extraer el ID real de quien pagó el gasto
+    const existingPayerId = exp.paidBy?._id || exp.paidBy;
+    
+    // 2. Si no viniera, recurrir al usuario logueado (nunca a project.members[0] por defecto)
+    const fallbackPayerId = user?._id || user?.id || '';
+
+    const resolvedPayerId = String(existingPayerId || fallbackPayerId);
+
     setEditForm({
-      title: exp.title,
-      amount: exp.amount,
+      title: exp.title || '',
+      amount: exp.amount !== undefined ? exp.amount : '',
       category: exp.category || 'General',
-      date: exp.date ? new Date(exp.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      date: exp.date 
+        ? new Date(exp.date).toISOString().split('T')[0] 
+        : new Date().toISOString().split('T')[0],
       isPersonal: Boolean(exp.isPersonal),
-      paidBy: exp.paidBy?._id || exp.paidBy || project?.members?.[0]?._id,
+      paidBy: resolvedPayerId,
     });
   };
 
@@ -528,16 +539,18 @@ export default function ProjectDetails() {
             </select>
 
             <select
-              value={editForm.paidBy}
+              value={String(editForm.paidBy || '')}
               onChange={(e) => setEditForm({ ...editForm, paidBy: e.target.value })}
               className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
             >
               {project?.members?.map((m, mIdx) => {
-                const memberId = m?._id || m;
-                const memberName = m?.name || `Usuario (${String(memberId).slice(-4)})`;
+                const memberId = String(m?._id || m?.id || (typeof m === 'string' ? m : ''));
+                const isCurrentUser = memberId === String(user?._id || user?.id);
+                const memberName = m?.name || (memberId ? `Miembro (${memberId.slice(-4)})` : `Miembro ${mIdx + 1}`);
+
                 return (
-                  <option key={memberId || mIdx} value={memberId}>
-                    Pagado por: {memberName}
+                  <option key={memberId || `mem-${mIdx}`} value={memberId}>
+                    Pagado por: {memberName} {isCurrentUser ? '(Tú)' : ''}
                   </option>
                 );
               })}
