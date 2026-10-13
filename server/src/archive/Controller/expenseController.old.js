@@ -1,6 +1,7 @@
 import { Expense } from '../models/Expense.js';
 import { Project } from '../models/Project.js';
 import { calculateBalancesAndDebts } from '../services/balanceService.js';
+import { buildExpenseSplit, findVisibleProjectExpenses, canModifyExpense } from '../services/expenseService.js';
 
 // @desc    Crear un gasto en un proyecto
 // @route   POST /api/projects/:projectId/expenses
@@ -8,11 +9,10 @@ import { calculateBalancesAndDebts } from '../services/balanceService.js';
 export const createExpense = async (req, res, next) => {
   try {
     const { projectId } = req.params;
-    const { title, amount, splitBetween, category, date, isPersonal } = req.body;
+    const { title, amount, splitBetween, category, date, isPersonal, paidBy } = req.body;
 
-    console.log('📌 Payload recibido en createExpense:', { title, amount, isPersonal, date });
-
-    if (!title || !amount || amount <= 0) {
+    const numAmount = Number(amount);
+    if (!title || !numAmount || numAmount <= 0) {
       res.status(400);
       throw new Error('💶 Debes indicar un concepto válido y un importe superior a 0');
     }
@@ -23,27 +23,26 @@ export const createExpense = async (req, res, next) => {
       throw new Error('🙃 Proyecto no encontrado');
     }
 
-    // Reparto según sea personal o compartido
-    let finalSplit = splitBetween;
-    if (Boolean(isPersonal)) {
-      finalSplit = [{ user: req.user._id, share: Number(amount) }];
-    } else if (!finalSplit || finalSplit.length === 0) {
-      const sharePerMember = Number((amount / project.members.length).toFixed(2));
-      finalSplit = project.members.map((memberId) => ({
-        user: memberId,
-        share: sharePerMember,
-      }));
-    }
+    // Payer: si es personal siempre es quien lo crea, si es compartido puede ser otro miembro
+    const payerId = Boolean(isPersonal) ? req.user._id : (paidBy || req.user._id);
+
+    const finalSplit = buildExpenseSplit(
+      numAmount,
+      isPersonal,
+      payerId,
+      project.members,
+      splitBetween
+    );
 
     const expense = await Expense.create({
       project: projectId,
-      title,
-      amount,
-      paidBy: req.user._id,
+      title: title.trim(),
+      amount: numAmount,
+      paidBy: payerId,
       splitBetween: finalSplit,
       category: category || 'General',
       date: date || Date.now(),
-      isPersonal: Boolean(isPersonal), // <-- Asegurar conversión a booleano
+      isPersonal: Boolean(isPersonal),
     });
 
     const populatedExpense = await Expense.findById(expense._id)
@@ -59,33 +58,18 @@ export const createExpense = async (req, res, next) => {
   }
 };
 
-// @desc    Obtener los gastos de un proyecto (filtrando privacidad de gastos personales)
+// @desc    Obtener los gastos de un proyecto (filtrando privacidad)
 // @route   GET /api/projects/:projectId/expenses
 // @access  Private
 export const getExpensesByProject = async (req, res, next) => {
   try {
     const { projectId } = req.params;
-
-    // Regla de privacidad:
-    // Mostrar gastos compartidos O gastos personales donde el usuario logueado sea el pagador
-    const filter = {
-      project: projectId,
-      $or: [
-        { isPersonal: false },
-        { isPersonal: { $exists: false } },
-        { isPersonal: true, paidBy: req.user._id }
-      ]
-    };
-
-    const expenses = await Expense.find(filter)
-      .populate('paidBy', 'name email')
-      .populate('splitBetween.user', 'name email')
-      .sort({ date: -1, createdAt: -1 });
+    const expenses = await findVisibleProjectExpenses(projectId, req.user._id);
 
     res.status(200).json({
       status: 'success',
       results: expenses.length,
-      data: { expenses }
+      data: { expenses },
     });
   } catch (error) {
     next(error);
@@ -107,11 +91,8 @@ export const getProjectBalances = async (req, res, next) => {
 
     const expenses = await Expense.find({ project: projectId });
 
-    // AQUÍ VA LA LÍNEA: Excluir gastos personales de la liquidación de deudas
-    const sharedExpenses = expenses.filter((exp) => !exp.isPersonal);
-
-    // Delegamos el cómputo financiero pasando solo los gastos a repartir
-    const balanceSummary = calculateBalancesAndDebts(sharedExpenses, project.members);
+    // Delegamos al servicio (que ya descarta automáticamente los gastos personales)
+    const balanceSummary = calculateBalancesAndDebts(expenses, project.members);
 
     res.status(200).json({
       status: 'success',
@@ -119,8 +100,8 @@ export const getProjectBalances = async (req, res, next) => {
         projectId,
         budget: project.budget,
         currency: project.currency,
-        ...balanceSummary
-      }
+        ...balanceSummary,
+      },
     });
   } catch (error) {
     next(error);
@@ -134,15 +115,17 @@ export const deleteExpense = async (req, res, next) => {
   try {
     const { projectId, expenseId } = req.params;
 
-    const expense = await Expense.findOne({ _id: expenseId, project: projectId });
+    const [expense, project] = await Promise.all([
+      Expense.findOne({ _id: expenseId, project: projectId }),
+      Project.findById(projectId)
+    ]);
+
     if (!expense) {
       res.status(404);
       throw new Error('Gasto no encontrado');
     }
 
-    // Solo quien pagó el gasto o el creador del proyecto puede borrarlo
-    const isOwner = expense.paidBy.toString() === req.user._id.toString();
-    if (!isOwner) {
+    if (!canModifyExpense(expense, project, req.user._id)) {
       res.status(403);
       throw new Error('No tienes permiso para eliminar este gasto');
     }
@@ -165,56 +148,47 @@ export const deleteExpense = async (req, res, next) => {
 export const updateExpense = async (req, res, next) => {
   try {
     const { projectId, expenseId } = req.params;
-    const { title, amount, category, date, isPersonal, splitBetween } = req.body;
+    const { title, amount, category, date, isPersonal, splitBetween, paidBy } = req.body;
 
-    const expense = await Expense.findOne({ _id: expenseId, project: projectId });
-    if (!expense) {
+    const [expense, project] = await Promise.all([
+      Expense.findOne({ _id: expenseId, project: projectId }),
+      Project.findById(projectId)
+    ]);
+
+    if (!expense || !project) {
       res.status(404);
-      throw new Error('Gasto no encontrado');
+      throw new Error('Gasto o proyecto no encontrado');
     }
 
-    const project = await Project.findById(projectId);
-    if (!project) {
-      res.status(404);
-      throw new Error('Proyecto no encontrado');
-    }
-
-    // Solo quien pagó el gasto o el creador del proyecto puede editarlo
-    const isOwner = expense.paidBy.toString() === req.user._id.toString();
-    const isCreator = project.creator && project.creator.toString() === req.user._id.toString();
-    if (!isOwner && !isCreator) {
+    if (!canModifyExpense(expense, project, req.user._id)) {
       res.status(403);
       throw new Error('No tienes permiso para modificar este gasto');
     }
 
     if (title !== undefined) expense.title = title.trim();
-    if (amount !== undefined) {
-      const numAmount = Number(amount);
-      if (numAmount <= 0) {
-        res.status(400);
-        throw new Error('El importe debe ser superior a 0');
-      }
-      expense.amount = numAmount;
-    }
     if (category !== undefined) expense.category = category;
     if (date !== undefined) expense.date = date;
+    if (paidBy !== undefined) expense.paidBy = paidBy;
+
+    const targetAmount = amount !== undefined ? Number(amount) : expense.amount;
+    if (targetAmount <= 0) {
+      res.status(400);
+      throw new Error('El importe debe ser superior a 0');
+    }
+    expense.amount = targetAmount;
 
     if (isPersonal !== undefined) {
       expense.isPersonal = Boolean(isPersonal);
-      if (expense.isPersonal) {
-        expense.splitBetween = [{ user: expense.paidBy, share: expense.amount }];
-      } else if (!splitBetween || splitBetween.length === 0) {
-        const sharePerMember = Number((expense.amount / project.members.length).toFixed(2));
-        expense.splitBetween = project.members.map((mId) => ({
-          user: mId,
-          share: sharePerMember,
-        }));
-      }
     }
 
-    if (splitBetween && !expense.isPersonal) {
-      expense.splitBetween = splitBetween;
-    }
+    // Recalcular el reparto si cambió el importe, la privacidad o el split explícito
+    expense.splitBetween = buildExpenseSplit(
+      expense.amount,
+      expense.isPersonal,
+      expense.paidBy,
+      project.members,
+      splitBetween
+    );
 
     await expense.save();
 
