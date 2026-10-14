@@ -1,22 +1,23 @@
+import { NotFoundError } from '../utils/errors/index.js';
+import { ERROR_MESSAGES } from '../utils/errors/errorMessages.js';
+
 // Middleware para rutas no encontradas (404)
 export const notFound = (req, res, next) => {
-  const error = new Error(`⛔️ Ruta no encontrada - ${req.originalUrl}`);
-  res.status(404);
-  next(error);
+  next(new NotFoundError(`${ERROR_MESSAGES.COMMON.ROUTE_NOT_FOUND} - ${req.originalUrl}`));
 };
 
-// Middleware centralizado de errores
+// Centralizado de gestión de errores
 export const errorHandler = (err, req, res, next) => {
-  let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  let message = err.message;
+  let statusCode = err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
+  let message = err.message || ERROR_MESSAGES.COMMON.INTERNAL_SERVER_ERROR;
 
-  // Error de Cast de Mongoose (ID inválido)
+  // CastError de Mongoose (formato de ObjectId incorrecto)
   if (err.name === 'CastError' && err.kind === 'ObjectId') {
     statusCode = 400;
-    message = '❌ Identificador no válido';
+    message = ERROR_MESSAGES.COMMON.INVALID_ID;
   }
 
-  // Error de validación de campos obligatorios en Mongoose
+  // Error de validación de esquemas Mongoose
   if (err.name === 'ValidationError') {
     statusCode = 400;
     message = Object.values(err.errors)
@@ -24,16 +25,16 @@ export const errorHandler = (err, req, res, next) => {
       .join(', ');
   }
 
-  // Error de clave duplicada en Mongo (por ejemplo, correo ya existente: código 11000)
+  // Clave duplicada en MongoDB (índices únicos como email)
   if (err.code === 11000) {
     statusCode = 400;
-    const field = Object.keys(err.keyValue)[0];
-    message = `🚫 El campo '${field}' ya está registrado`;
+    const field = Object.keys(err.keyValue || {})[0] || 'campo';
+    message = `🚫 El valor del campo '${field}' ya está registrado`;
   }
 
   res.status(statusCode).json({
-    status: 'error',
+    status: `${statusCode}`.startsWith('4') ? 'fail' : 'error',
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };

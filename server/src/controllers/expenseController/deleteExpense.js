@@ -1,6 +1,7 @@
 import { Expense } from '../../models/Expense.js';
 import { Project } from '../../models/Project.js';
 import { canModifyExpense } from '../../services/expenseService/index.js';
+import { ERROR_MESSAGES, NotFoundError, ForbiddenError } from '../../utils/errors/index.js';
 
 // @desc    Eliminar un gasto
 // @route   DELETE /api/projects/:projectId/expenses/:expenseId
@@ -15,20 +16,26 @@ export const deleteExpense = async (req, res, next) => {
     ]);
 
     if (!expense) {
-      res.status(404);
-      throw new Error('Gasto no encontrado');
+      // res.status(404);
+      // throw new Error('Gasto no encontrado');
+      throw new NotFoundError(ERROR_MESSAGES.EXPENSE.NOT_FOUND);
+    }
+    
+    if (!project) {
+      throw new NotFoundError(ERROR_MESSAGES.EXPENSE.NOT_FOUND);
     }
 
     if (!canModifyExpense(expense, project, req.user._id)) {
-      res.status(403);
-      throw new Error('No tienes permiso para eliminar este gasto');
+      // res.status(403);
+      // throw new Error('No tienes permiso para eliminar este gasto');
+      throw new ForbiddenError(ERROR_MESSAGES.EXPENSE.FORBIDDEN_ACTION);
     }
 
     await expense.deleteOne();
 
     res.status(200).json({
       status: 'success',
-      message: 'Gasto eliminado correctamente',
+      message: '✅ Gasto eliminado correctamente',
       data: null,
     });
   } catch (error) {

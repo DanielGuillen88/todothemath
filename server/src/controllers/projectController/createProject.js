@@ -1,4 +1,5 @@
 import { Project } from '../../models/Project.js';
+import { ERROR_MESSAGES, BadRequestError } from '../../utils/errors/index.js';
 
 // @desc    Crear un nuevo proyecto
 // @route   POST /api/projects
@@ -8,8 +9,9 @@ export const createProject = async (req, res, next) => {
     const { title, description, type, budget, currency } = req.body;
 
     if (!title || !title.trim()) {
-      res.status(400);
-      throw new Error('😅 El título del proyecto es obligatorio');
+      // res.status(400);
+      // throw new Error('😅 El título del proyecto es obligatorio');
+      throw new BadRequestError(ERROR_MESSAGES.PROJECT_TITLE_REQUIRED);
     }
 
     const project = await Project.create({

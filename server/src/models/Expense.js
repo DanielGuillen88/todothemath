@@ -29,7 +29,7 @@ const expenseSchema = new mongoose.Schema(
     },
     isPersonal: {
       type: Boolean,
-      default: false,
+      default: true,
     },
     paidBy: {
       type: mongoose.Schema.Types.ObjectId,

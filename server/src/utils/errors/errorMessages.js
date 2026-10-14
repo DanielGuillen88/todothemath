@@ -1,0 +1,37 @@
+export const ERROR_MESSAGES = {
+    AUTH: {
+        MISSING_FIELDS: '🙏🏻 Por favor completa todos los campos requeridos',
+        PASSWORD_TOO_SHORT: '❌ La contraseña debe tener al menos 6 caracteres',
+        EMAIL_ALREADY_EXISTS: '🙉 Ya existe una cuenta con ese correo electrónico',
+        INVALID_CREDENTIALS: '🙈 Credenciales inválidas',
+        USER_NOT_FOUND: '⁉️ No existe ningún usuario registrado con ese email',
+        NOT_AUTHORIZED: '⛔️ No autorizado, token ausente o no válido',
+    },
+    PROJECT: {
+        INVALID_ID: '❌ ID de proyecto no válido',
+        TITLE_REQUIRED: '😅 El título del proyecto es obligatorio',
+        NOT_FOUND: '🙃 Proyecto no encontrado',
+        FORBIDDEN_ACCESS: '⛔️ No tienes acceso a este proyecto',
+        FORBIDDEN_MANAGE_MEMBERS: '⛔️ No tienes permisos para gestionar miembros en este proyecto',
+        FORBIDDEN_EDIT: '⛔️ No tienes permisos para editar este proyecto (solo el creador)',
+        FORBIDDEN_DELETE: '⛔️ No tienes permisos para eliminar este proyecto (solo el creador)',
+        MEMBER_EMAIL_REQUIRED: '😅 Debes indicar el email del participante.',
+        ALREADY_MEMBER: '‼️ El usuario ya forma parte de este proyecto',
+    },
+    EXPENSE: {
+        INVALID_AMOUNT: '💶 Debes indicar un concepto válido y un importe superior a 0',
+        INVALID_TITLE: '📝 El concepto del gasto no puede estar vacío',
+        INVALID_CATEGORY: '🏷️ Debes indicar una categoría válida',
+        INVALID_IS_PERSONAL: '⚠️ El tipo de gasto debe ser personal o compartido',
+        INVALID_DATE: '📅 Debes indicar una fecha válida',
+        INVALID_PAID_BY: '👤 Debes indicar un usuario válido',
+        NOT_FOUND: '💸 Gasto no encontrado',
+        FORBIDDEN_ACTION: '⛔️ No tienes permiso para modificar o eliminar este gasto',
+        PROJECT_NOT_FOUND: '🙃 Proyecto no encontrado',
+    },
+    COMMON: {
+        ROUTE_NOT_FOUND: '⛔️ Ruta no encontrada',
+        INVALID_ID: '❌ Identificador no válido',
+        INTERNAL_SERVER_ERROR: '💥 Error interno del servidor',
+    },
+};
