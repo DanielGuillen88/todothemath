@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { calculateBalancesAndDebts } from '../services/balanceService.js';
+import { calculateBalances } from '../services/balanceService.js';
 
 // Ejemplo 1: Gasto repartidos entre varios miembros
 
@@ -24,7 +24,7 @@ describe('Balance Service - Cálculos y Liquidación de Deudas', () => {
       }
     ];
 
-    const result = calculateBalancesAndDebts(expenses, members);
+    const result = calculateBalances(expenses, members);
 
     // console.log('\n--- 💳 Liquidación Caso 1 (Cena 90€) ---');
     // result.settlements.forEach((s) => {
@@ -73,7 +73,7 @@ describe('Balance Service - Cálculos y Liquidación de Deudas', () => {
       }
     ];
 
-    const result = calculateBalancesAndDebts(expenses, [members[0], members[1]]);
+    const result = calculateBalances(expenses, [members[0], members[1]]);
 
     // console.log('\n--- 💳 Liquidación Caso 2 (Gastos cruzados) ---');
     // result.settlements.forEach((s) => {

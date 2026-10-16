@@ -1,6 +1,6 @@
 import { Expense } from '../models/Expense.js';
 import { Project } from '../models/Project.js';
-import { calculateBalancesAndDebts } from '../services/balanceService.js';
+import { calculateBalances } from '../services/balanceService.js';
 import { buildExpenseSplit, findVisibleProjectExpenses, canModifyExpense } from '../services/expenseService.js';
 
 // @desc    Crear un gasto en un proyecto
@@ -92,7 +92,7 @@ export const getProjectBalances = async (req, res, next) => {
     const expenses = await Expense.find({ project: projectId });
 
     // Delegamos al servicio (que ya descarta automáticamente los gastos personales)
-    const balanceSummary = calculateBalancesAndDebts(expenses, project.members);
+    const balanceSummary = calculateBalances(expenses, project.members);
 
     res.status(200).json({
       status: 'success',

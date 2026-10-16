@@ -2,90 +2,78 @@
  * Calcula los balances individuales y simplifica las transferencias mínimas
  * para saldar las deudas de un proyecto (excluyendo automáticamente gastos personales).
  */
-export const calculateBalancesAndDebts = (expenses = [], members = []) => {
+export const calculateBalances = (expenses = [], members = []) => {
+  const balanceMap = new Map();
+
   // 1. Inicializar balance en 0 para cada miembro registrado en el proyecto
-  const balanceMap = {};
-  
   members.forEach((m) => {
-    const memberId = String(m?._id || m?.id || m);
-    balanceMap[memberId] = {
-      user: { 
-        id: memberId, 
-        name: m?.name || 'Participante', 
-        email: m?.email || '' 
-      },
-      paid: 0,
-      owes: 0,
-      netBalance: 0
-    };
+    if (!m) return;
+    const id = String(m._id || m.id || m);
+    const name = m.name || m.email || `Usuario (${id.slice(-4)})`;
+    balanceMap.set(id, { id, name, paid: 0, owes: 0, net: 0 });
   });
 
-  let totalSharedExpenses = 0;
-
   // 2. Procesar cada gasto
-  expenses.forEach((expense) => {
+  expenses.forEach((exp) => {
+    if (!exp) return;
     // REGLA CLAVE: Los gastos personales NO generan deuda entre los miembros
-    if (expense.isPersonal) {
-      return;
-    }
+    if (exp.isPersonal) return;
 
-    const amount = Number(expense.amount || 0);
+    const amount = Number(exp.amount || 0);
     if (amount <= 0) return;
 
-    totalSharedExpenses += amount;
-
-    const payerId = String(expense.paidBy?._id || expense.paidBy?.id || expense.paidBy || '');
-
-    if (balanceMap[payerId]) {
-      balanceMap[payerId].paid += amount;
+    // Obtener ID del pagador de forma segura
+    const payerId = String(exp.paidBy?._id || exp.paidBy?.id || exp.paidBy || '');
+    if (payerId && balanceMap.has(payerId)) {
+      const payer = balanceMap.get(payerId);
+      payer.paid += amount;
     }
 
     // Reparto entre los participantes designados en el gasto compartido
-    if (Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0) {
-      expense.splitBetween.forEach((split) => {
-        const debtorId = String(split?.user?._id || split?.user?.id || split?.user || split);
-        const share = Number(split?.share ?? (amount / expense.splitBetween.length));
-        
-        if (balanceMap[debtorId]) {
-          balanceMap[debtorId].owes += share;
+    if (Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0) {
+      exp.splitBetween.forEach((split) => {
+        if (!split) return;
+        const userId = String(split.user?._id || split.user?.id || split.user || '');
+        const share = Number(split.share) || (amount / exp.splitBetween.length);
+
+        if (userId && balanceMap.has(userId)) {
+          const debtor = balanceMap.get(userId);
+          debtor.owes += share;
         }
       });
-    } else {
-      // Fallback: si no hay splitBetween explícito, se divide a partes iguales entre todos los miembros
-      const totalMembersCount = members.length || 1;
-      const sharePerMember = amount / totalMembersCount;
-      
-      Object.keys(balanceMap).forEach((memberId) => {
-        balanceMap[memberId].owes += sharePerMember;
+    } else if (members.length > 0) {
+      // Reparto equitativo por defecto si splitBetween viniera vacío
+      const equalShare = amount / members.length;
+      members.forEach((m) => {
+        const id = String(m._id || m.id || m);
+        if (balanceMap.has(id)) {
+          balanceMap.get(id).owes += equalShare;
+        }
       });
     }
   });
 
   // 3. Calcular balance neto (positivo = debe recibir dinero, negativo = debe pagar)
-  const balances = Object.values(balanceMap).map((item) => {
-    const net = Number((item.paid - item.owes).toFixed(2));
-    item.netBalance = net;
-    item.paid = Number(item.paid.toFixed(2));
-    item.owes = Number(item.owes.toFixed(2));
-    return item;
-  });
-
-  // 4. Simplificar transacciones (Algoritmo Greedy para mínimas transferencias)
+  const balances = [];
   const debtors = [];   // Los que deben dinero (netBalance < 0)
   const creditors = []; // Los que deben recibir dinero (netBalance > 0)
 
-  balances.forEach((b) => {
-    if (b.netBalance < -0.01) {
-      debtors.push({ ...b, amount: Math.abs(b.netBalance) });
-    } else if (b.netBalance > 0.01) {
-      creditors.push({ ...b, amount: b.netBalance });
+  balanceMap.forEach((entry) => {
+    const net = Number((entry.paid - entry.owes).toFixed(2));
+    entry.net = net;
+    entry.paid = Number(entry.paid.toFixed(2));
+    entry.owes = Number(entry.owes.toFixed(2));
+
+    balances.push(entry);
+
+    if (net < -0.01) {
+      debtors.push({ ...entry, amount: Math.abs(net) });
+    } else if (net > 0.01) {
+      creditors.push({ ...entry, amount: net });
     }
   });
 
-  // Ordenar de mayor a menor para optimizar los emparejamientos
-  debtors.sort((a, b) => b.amount - a.amount);
-  creditors.sort((a, b) => b.amount - a.amount);
-
+  // 4. Simplificar transacciones (Algoritmo Greedy para mínimas transferencias)
   const settlements = [];
   let dIdx = 0;
   let cIdx = 0;
@@ -94,27 +82,24 @@ export const calculateBalancesAndDebts = (expenses = [], members = []) => {
     const debtor = debtors[dIdx];
     const creditor = creditors[cIdx];
 
-    const settlementAmount = Math.min(debtor.amount, creditor.amount);
-    const roundedAmount = Number(settlementAmount.toFixed(2));
+    const settleAmount = Number(Math.min(debtor.amount, creditor.amount).toFixed(2));
 
-    if (roundedAmount > 0) {
+    if (settleAmount > 0) {
       settlements.push({
-        from: debtor.user,
-        to: creditor.user,
-        amount: roundedAmount
+        from: debtor.name,
+        fromId: debtor.id,
+        to: creditor.name,
+        toId: creditor.id,
+        amount: settleAmount,
       });
+
+      debtor.amount = Number((debtor.amount - settleAmount).toFixed(2));
+      creditor.amount = Number((creditor.amount - settleAmount).toFixed(2));
     }
 
-    debtor.amount -= settlementAmount;
-    creditor.amount -= settlementAmount;
-
-    if (debtor.amount < 0.01) dIdx++;
-    if (creditor.amount < 0.01) cIdx++;
+    if (debtor.amount <= 0.01) dIdx++;
+    if (creditor.amount <= 0.01) cIdx++;
   }
 
-  return {
-    totalExpenses: Number(totalSharedExpenses.toFixed(2)),
-    balances,
-    settlements
-  };
+  return { balances, settlements };
 };

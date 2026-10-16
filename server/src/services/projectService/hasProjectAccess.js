@@ -1,3 +1,5 @@
+import { isProjectMember, isProjectOwner } from './index.js';
+
 /**
  * Comprueba si un usuario tiene acceso (como miembro o como owner)
  * @param {Object} project 

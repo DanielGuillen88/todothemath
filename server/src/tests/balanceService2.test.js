@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { calculateBalancesAndDebts } from '../services/balanceService.js';
+import { calculateBalances } from '../services/balanceService.js';
 
 const members = [
   { _id: 'user1', name: 'Daniel', email: 'daniel@example.com' },
@@ -50,7 +50,7 @@ it('juntamos todos los gastos acumulados y simplificamos todas las deudas en com
       }
     ];
 
-    const result = calculateBalancesAndDebts(multiExpenses, members);
+    const result = calculateBalances(multiExpenses, members);
 
     console.log('\n--- 📊 Balances Netos Consolidados ---');
     result.balances.forEach((b) => {

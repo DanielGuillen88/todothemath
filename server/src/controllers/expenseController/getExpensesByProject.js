@@ -8,7 +8,7 @@ import { ERROR_MESSAGES, NotFoundError, ForbiddenError } from '../../utils/error
 // @access  Private
 export const getExpensesByProject = async (req, res, next) => {
   try {
-    const { projectId } = req.params;
+    const projectId = req.params.projectId || req.params.id;
 
     // Validación del ID del proyecto
     const project = await Project.findById(projectId);

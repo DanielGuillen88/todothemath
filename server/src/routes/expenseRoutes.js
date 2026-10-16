@@ -7,7 +7,7 @@ const router = express.Router({ mergeParams: true });
 
 router.use(protect);
 
-// /api/projects/:id/expenses/balances
+// GET /api/projects/:id/expenses/balances (siempre antes de :expenseId)
 router.get('/balances', getProjectBalances);
 
 // /api/projects/:id/expenses
