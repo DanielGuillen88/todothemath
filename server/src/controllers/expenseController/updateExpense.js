@@ -9,18 +9,14 @@ import { ERROR_MESSAGES, BadRequestError, NotFoundError, ForbiddenError } from '
 
 export const updateExpense = async (req, res, next) => {
   try {
-    const { projectId, expenseId } = req.params;
+    const projectId = req.params.projectId || req.params.id;
+    const { expenseId } = req.params;
     const { title, amount, category, date, isPersonal, splitBetween, paidBy } = req.body;
 
     const [expense, project] = await Promise.all([
       Expense.findOne({ _id: expenseId, project: projectId }),
       Project.findById(projectId)
     ]);
-
-    // if (!expense || !project) {
-    //   res.status(404);
-    //   throw new Error('Gasto o proyecto no encontrado');
-    // }
 
     if (!expense) {
       throw new NotFoundError(ERROR_MESSAGES.EXPENSE.NOT_FOUND);
@@ -31,15 +27,8 @@ export const updateExpense = async (req, res, next) => {
     }
 
     if (!canModifyExpense(expense, project, req.user._id)) {
-      // res.status(403);
-      // throw new Error('No tienes permiso para modificar este gasto');
       throw new ForbiddenError(ERROR_MESSAGES.EXPENSE.FORBIDDEN_ACTION);
     }
-
-    // if (title !== undefined) expense.title = title.trim();
-    // if (category !== undefined) expense.category = category;
-    // if (date !== undefined) expense.date = date;
-
 
     if (title !== undefined) {
       if (typeof title !== 'string' || !title.trim()) {
@@ -73,20 +62,41 @@ export const updateExpense = async (req, res, next) => {
       expense.amount = numAmount;
     }
 
-    if (paidBy !== undefined) {
-  const cleanPaidBy = paidBy?._id ?? paidBy?.id ?? paidBy;
+  //   if (paidBy !== undefined) {
+  // const cleanPaidBy = paidBy?._id ?? paidBy?.id ?? paidBy;
 
-  if (
-      cleanPaidBy === null ||
-      typeof cleanPaidBy === 'object' ||
-      String(cleanPaidBy).trim() === ''
-      ) {
+  // if (
+  //     cleanPaidBy === null ||
+  //     typeof cleanPaidBy === 'object' ||
+  //     String(cleanPaidBy).trim() === ''
+  //     ) {
+  //       throw new BadRequestError(
+  //         ERROR_MESSAGES.EXPENSE.INVALID_PAID_BY
+  //       );
+  //     }
+
+  //     expense.paidBy = String(cleanPaidBy);
+  //   }
+  if (paidBy !== undefined && paidBy !== null) {
+      let rawId = paidBy;
+
+      // Si viene como objeto, buscar el ID en sus posibles propiedades
+      if (typeof paidBy === 'object') {
+        rawId = paidBy._id || paidBy.id || paidBy.value || '';
+      }
+
+      const cleanPaidBy = String(rawId || '').trim();
+
+      // Rechazar si no es un ObjectId válido de Mongo (24 caracteres hex) o es "[object Object]"
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(cleanPaidBy);
+
+      if (!isValidObjectId) {
         throw new BadRequestError(
-          ERROR_MESSAGES.EXPENSE.INVALID_PAID_BY
+          ERROR_MESSAGES.EXPENSE?.INVALID_PAID_BY || 'El pagador seleccionado no es válido'
         );
       }
 
-      expense.paidBy = String(cleanPaidBy);
+      expense.paidBy = cleanPaidBy;
     }
 
     if (isPersonal !== undefined) {
@@ -101,13 +111,15 @@ export const updateExpense = async (req, res, next) => {
 
     // Extraer solo el ID de quien paga para el cálculo de reparto
     const payerId = String(expense.paidBy?._id || expense.paidBy?.id || expense.paidBy);
+    // Si no se envía splitBetween nuevo, preservar los participantes que ya tenía el gasto
+    const currentSplitPayload = splitBetween !== undefined ? splitBetween : expense.splitBetween;
 
     expense.splitBetween = buildExpenseSplit(
       expense.amount,
       expense.isPersonal,
       payerId,
       project.members,
-      splitBetween
+      currentSplitPayload
     );
 
     await expense.save();
