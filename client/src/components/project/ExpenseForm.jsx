@@ -1,28 +1,35 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Plus, AlertCircle } from 'lucide-react';
+import { CreditCard, Plus, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import ExpenseFields from './ExpenseFields';
 
 export default function ExpenseForm({ project, currentUser, onSubmit }) {
-  
   const currentUserId = String(currentUser?._id || currentUser?.id || '');
 
-  const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Otros');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isPersonal, setIsPersonal] = useState(true);
-  const [paidBy, setPaidBy] = useState(currentUserId);
+  const [form, setForm] = useState({
+    title: '',
+    amount: '',
+    category: 'Otros',
+    date: new Date().toISOString().split('T')[0],
+    isPersonal: true,
+    paidBy: currentUserId,
+  });
+
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error', text: '' }
 
   useEffect(() => {
     if (project?.members) {
       setSelectedMembers(project.members.map((m) => m._id || m));
-      if (!paidBy) {
-        setPaidBy(currentUserId || project.members[0]?._id);
+      if (!form.paidBy) {
+        setForm((prev) => ({ ...prev, paidBy: currentUserId || project.members[0]?._id }));
       }
     }
-  }, [project, currentUserId, paidBy]);
+  }, [project, currentUserId, form.paidBy]);
+
+  const handleFieldChange = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
 
   const toggleMemberSplit = (memberId) => {
     setSelectedMembers((prev) => {
@@ -36,16 +43,27 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setFeedback(null);
 
-    const numericAmount = Number(amount);
-    if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
-      setError('Introduce un importe válido mayor que 0.');
+    const numericAmount = Number(form.amount);
+
+    if (!form.title.trim()) {
+      setFeedback({ type: 'error', text: 'Debes indicar un concepto para el gasto.' });
+      return;
+    }
+
+    if (!form.amount || isNaN(numericAmount) || numericAmount <= 0) {
+      setFeedback({ type: 'error', text: 'Introduce un importe válido mayor que 0.' });
+      return;
+    }
+
+    if (!form.date) {
+      setFeedback({ type: 'error', text: 'Debes seleccionar una fecha.' });
       return;
     }
 
     let splitPayload = [];
-    if (!isPersonal && selectedMembers.length > 0) {
+    if (!form.isPersonal && selectedMembers.length > 0) {
       const sharePerPerson = Number((numericAmount / selectedMembers.length).toFixed(2));
       splitPayload = selectedMembers.map((mId) => ({
         user: mId,
@@ -54,29 +72,40 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
     }
 
     const payload = {
-      title: title.trim(),
+      title: form.title.trim(),
       amount: numericAmount,
-      category,
-      date: date ? new Date(date).toISOString() : new Date().toISOString(),
-      isPersonal: Boolean(isPersonal),
-      paidBy: isPersonal ? currentUserId : (paidBy || currentUserId),
-      splitBetween: isPersonal ? undefined : splitPayload,
+      category: form.category,
+      date: form.date ? new Date(form.date).toISOString() : new Date().toISOString(),
+      isPersonal: Boolean(form.isPersonal),
+      paidBy: form.isPersonal ? currentUserId : (form.paidBy || currentUserId),
+      splitBetween: form.isPersonal ? undefined : splitPayload,
     };
 
     setIsSubmitting(true);
     try {
       await onSubmit(payload);
-      setTitle('');
-      setAmount('');
-      setCategory('Otros');
-      setDate(new Date().toISOString().split('T')[0]);
-      setIsPersonal(true);
-      setPaidBy(currentUserId);
+
+      setFeedback({ type: 'success', text: 'Gasto registrado con éxito' });
+      setForm({
+        title: '',
+        amount: '',
+        category: 'Otros',
+        date: new Date().toISOString().split('T')[0],
+        isPersonal: true,
+        paidBy: currentUserId,
+      });
+
       if (project?.members) {
         setSelectedMembers(project.members.map((m) => m._id || m));
       }
+
+      // Ocultar mensaje de éxito tras 2 segundos
+      setTimeout(() => setFeedback(null), 2000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Error al registrar el gasto.');
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al registrar el gasto.',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -89,154 +118,53 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
         <span>Añadir Nuevo Gasto</span>
       </h2>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg flex items-center gap-2 text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
+      {/* Si hay éxito, mostramos solo la tarjeta positiva y ocultamos el formulario temporalmente */}
+      {feedback?.type === 'success' ? (
+        <div className="py-6 px-4 bg-emerald-950/40 border border-emerald-800/60 rounded-xl flex items-center justify-center gap-2 text-emerald-300 text-sm font-medium animate-pulse">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          <span>{feedback.text}</span>
         </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="sm:col-span-2">
-          <label className="block text-xs font-medium text-slate-400 mb-1">Concepto</label>
-          <input
-            type="text"
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Cena, Peajes, Entradas..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">
-            Importe ({project?.currency || '€'})
-          </label>
-          <input
-            type="number"
-            step="any"
-            min="0.01"
-            required
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">Fecha</label>
-          <input
-            type="date"
-            required
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">Categoría</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-          >
-            <option value="Otros">Otros</option>
-            <option value="Ocio">Ocio</option>
-            <option value="Comida">Comida</option>
-            <option value="Transporte">Transporte</option>
-            <option value="Alojamiento">Alojamiento</option>
-            <option value="Supermercado">Supermercado</option>
-            <option value="Personales">Personales</option>
-          </select>
-        </div>
-
-        {!isPersonal && (
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Pagado por</label>
-            <select
-              value={paidBy}
-              onChange={(e) => setPaidBy(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-            >
-              {project?.members?.map((m, idx) => {
-                const memberId = String(m?._id || m?.id || m);
-                const ownerId = String(project?.owner?._id || project?.owner?.id || project?.owner);
-                const isOwner = memberId === ownerId;
-                const isCurrent = memberId === currentUserId;
-                const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
-
-                return (
-                  <option key={`paidby-${memberId}-${idx}`} value={memberId}>
-                    {memberName} {isCurrent ? '(Mí)' : ''} {isOwner ? '👑' : ''}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-        )}
-
-        <div className="sm:col-span-3 pt-1">
-          <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-300">
-            <input
-              type="checkbox"
-              checked={isPersonal}
-              onChange={(e) => setIsPersonal(e.target.checked)}
-              className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
-            />
-            <span>Gasto personal (solo lo asume quien pagó, no entra en el reparto)</span>
-          </label>
-        </div>
-
-        {!isPersonal && project?.members && project.members.length > 1 && (
-          <div className="sm:col-span-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-slate-400">Dividir gasto entre:</span>
-              <span className="text-[11px] text-indigo-400">
-                {selectedMembers.length} seleccionados (
-                {Number(amount ? (Number(amount) / selectedMembers.length).toFixed(2) : 0)}{' '}
-                {project.currency}/persona)
-              </span>
+      ) : (
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          {feedback?.type === 'error' && (
+            <div className="p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg flex items-center gap-2 text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{feedback.text}</span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {project.members.map((m, idx) => {
-                const memberId = String(m?._id || m?.id || m);
-                const isIncluded = selectedMembers.some((mid) => String(mid) === memberId);
-                const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+          )}
 
-                return (
-                  <button
-                    key={`split-${memberId}-${idx}`}
-                    type="button"
-                    onClick={() => toggleMemberSplit(memberId)}
-                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-                      isIncluded
-                        ? 'bg-indigo-950/80 border-indigo-600/70 text-indigo-200'
-                        : 'bg-slate-900 border-slate-800 text-slate-500 line-through'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${isIncluded ? 'bg-indigo-400' : 'bg-slate-600'}`}></span>
-                    {memberName}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="sm:col-span-3 flex justify-end pt-2">
-          <button
-            type="submit"
+          <ExpenseFields
+            values={form}
+            onChange={handleFieldChange}
+            project={project}
+            currentUser={currentUser}
             disabled={isSubmitting}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm px-5 py-2.5 rounded-lg transition-colors shadow-sm cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{isSubmitting ? 'Guardando...' : 'Registrar Gasto'}</span>
-          </button>
-        </div>
-      </form>
+            showSplitSelector={true}
+            selectedMembers={selectedMembers}
+            onToggleMember={toggleMemberSplit}
+          />
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-xs px-5 py-2.5 rounded-lg transition-colors shadow-sm cursor-pointer"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Guardando...</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  <span>Registrar Gasto</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
