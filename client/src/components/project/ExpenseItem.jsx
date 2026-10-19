@@ -2,8 +2,16 @@ import { useState } from 'react';
 import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2, Loader2 } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
 
-export default function ExpenseItem({ expense, project, currentUser, isMe, getMyShareForExpense, onUpdate, onDelete, groupBy }) {
-  
+export default function ExpenseItem({
+  expense,
+  project,
+  currentUser,
+  isMe,
+  getMyShareForExpense,
+  onUpdate,
+  onDelete,
+  groupBy,
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [isConfirmingSave, setIsConfirmingSave] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -49,7 +57,8 @@ export default function ExpenseItem({ expense, project, currentUser, isMe, getMy
   const handleSave = async () => {
     setActionFeedback(null);
 
-    if (!editForm.title.trim() || Number(editForm.amount) <= 0) {
+    const numericAmount = Number(editForm.amount);
+    if (!editForm.title.trim() || isNaN(numericAmount) || numericAmount <= 0) {
       setActionFeedback({
         type: 'error',
         text: 'Debes indicar un concepto válido y un importe superior a 0.',
@@ -61,28 +70,30 @@ export default function ExpenseItem({ expense, project, currentUser, isMe, getMy
       ? String(editForm.paidBy?._id || editForm.paidBy?.id || '')
       : String(editForm.paidBy || '');
 
-    const sanitizedSplit = Array.isArray(expense.splitBetween)
+    const membersCount = expense.splitBetween?.length || 1;
+    const newSharePerPerson = Number((numericAmount / membersCount).toFixed(2));
+
+    const updatedSplit = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
       ? expense.splitBetween.map((item) => ({
           user: typeof item.user === 'object'
             ? String(item.user?._id || item.user?.id || '')
             : String(item.user || item),
-          share: Number(item.share) || 0,
+          share: newSharePerPerson,
         }))
-      : [];
+      : undefined;
 
     setIsProcessing(true);
     try {
       await onUpdate(expense._id, {
         title: editForm.title.trim(),
-        amount: Number(editForm.amount),
+        amount: numericAmount,
         category: editForm.category,
         date: new Date(editForm.date).toISOString(),
         isPersonal: editForm.isPersonal,
         paidBy: payerIdToSend,
-        splitBetween: editForm.isPersonal ? undefined : sanitizedSplit,
+        splitBetween: editForm.isPersonal ? undefined : updatedSplit,
       });
 
-      // Feedback positivo: reemplaza el formulario
       setActionFeedback({ type: 'success', text: 'Gasto actualizado correctamente' });
       setIsConfirmingSave(false);
 
@@ -119,7 +130,6 @@ export default function ExpenseItem({ expense, project, currentUser, isMe, getMy
     }
   };
 
-  // Feedback positivo: desaparece el formulario / fila y se muestra la tarjeta de éxito
   if (actionFeedback?.type === 'success') {
     return (
       <div className="py-3 px-4 my-1.5 bg-emerald-950/40 border border-emerald-800/60 rounded-xl flex items-center justify-center gap-2 text-emerald-300 text-xs font-medium animate-pulse">
@@ -129,11 +139,21 @@ export default function ExpenseItem({ expense, project, currentUser, isMe, getMy
     );
   }
 
-  const myShare = getMyShareForExpense(expense);
+  // Comprobación de participación usando isMe (o fallback a true si no hay splitBetween explícito)
+  const isParticipant = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
+    ? expense.splitBetween.some((item) => isMe(item.user))
+    : true;
+
+  const splitCount = expense.splitBetween?.length > 0
+    ? expense.splitBetween.length
+    : (project?.members?.length || 1);
+
+  // Cuota dinámica: si participas, calcula importe / participantes; si no, 0
+  const computedShare = isParticipant ? (Number(expense.amount || 0) / splitCount) : 0;
+
   const paidByMe = isMe(expense.paidBy);
   const payerName = paidByMe ? 'Mí' : (expense.paidBy?.name || 'Otro miembro');
 
-  // Modo edición inline
   if (isEditing) {
     return (
       <div className="p-3.5 my-1.5 bg-slate-950 border border-indigo-500/50 rounded-xl space-y-3">
@@ -144,7 +164,6 @@ export default function ExpenseItem({ expense, project, currentUser, isMe, getMy
           </div>
         )}
 
-        {/* Formulario reutilizado */}
         <ExpenseFields
           values={editForm}
           onChange={handleFieldChange}
@@ -202,7 +221,6 @@ export default function ExpenseItem({ expense, project, currentUser, isMe, getMy
     );
   }
 
-  // Modo tarjeta de visualización
   const cardTypeStyles = expense.isPersonal
     ? 'bg-amber-950/20 hover:bg-amber-950/30 border-amber-900/40 border-l-4 border-l-amber-500'
     : 'bg-indigo-950/20 hover:bg-indigo-950/30 border-indigo-900/40 border-l-4 border-l-indigo-500';
@@ -292,7 +310,7 @@ export default function ExpenseItem({ expense, project, currentUser, isMe, getMy
           {!expense.isPersonal && (
             <div className="flex items-center gap-1 text-xs mt-0.5">
               <span className="font-semibold text-emerald-400">
-                {myShare.toFixed(2)} {project?.currency || '€'}
+                {computedShare.toFixed(2)} {project?.currency || '€'}
               </span>
             </div>
           )}
