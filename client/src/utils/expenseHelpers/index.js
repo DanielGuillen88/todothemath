@@ -9,3 +9,6 @@ export { buildRecalculatedSplit } from './buildRecalculatedSplit.js';
 
 // Formatea una fecha en hora local corta (HH:MM).
 export { formatTimeHHMM } from './formatTimeHHMM.js';
+
+// Genera el payload normalizado para crear un nuevo gasto.
+export { buildExpensePayload } from './buildExpensePayload.js';
