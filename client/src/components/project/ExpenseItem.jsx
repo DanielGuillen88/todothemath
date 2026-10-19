@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2, Loader2 } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
+import { extractEntityId, calculateDynamicShare, buildRecalculatedSplit, formatTimeHHMM } from '../../utils/expenseHelpers/index.js';
 
 export default function ExpenseItem({
   expense,
   project,
   currentUser,
   isMe,
-  getMyShareForExpense,
   onUpdate,
   onDelete,
   groupBy,
@@ -36,12 +36,8 @@ export default function ExpenseItem({
     setIsConfirmingSave(false);
     setActionFeedback(null);
 
-    const rawPayer = expense.paidBy;
-    const existingPayerId = typeof rawPayer === 'object'
-      ? String(rawPayer?._id || rawPayer?.id || '')
-      : String(rawPayer || '');
-
-    const currentId = String(currentUser?._id || currentUser?.id || '');
+    const existingPayerId = extractEntityId(expense.paidBy);
+    const currentId = extractEntityId(currentUser);
 
     setEditForm({
       title: expense.title || '',
@@ -66,21 +62,8 @@ export default function ExpenseItem({
       return;
     }
 
-    const payerIdToSend = typeof editForm.paidBy === 'object'
-      ? String(editForm.paidBy?._id || editForm.paidBy?.id || '')
-      : String(editForm.paidBy || '');
-
-    const membersCount = expense.splitBetween?.length || 1;
-    const newSharePerPerson = Number((numericAmount / membersCount).toFixed(2));
-
-    const updatedSplit = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
-      ? expense.splitBetween.map((item) => ({
-          user: typeof item.user === 'object'
-            ? String(item.user?._id || item.user?.id || '')
-            : String(item.user || item),
-          share: newSharePerPerson,
-        }))
-      : undefined;
+    const payerIdToSend = extractEntityId(editForm.paidBy);
+    const updatedSplit = buildRecalculatedSplit(expense.splitBetween, numericAmount);
 
     setIsProcessing(true);
     try {
@@ -139,18 +122,7 @@ export default function ExpenseItem({
     );
   }
 
-  // Comprobación de participación usando isMe (o fallback a true si no hay splitBetween explícito)
-  const isParticipant = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
-    ? expense.splitBetween.some((item) => isMe(item.user))
-    : true;
-
-  const splitCount = expense.splitBetween?.length > 0
-    ? expense.splitBetween.length
-    : (project?.members?.length || 1);
-
-  // Cuota dinámica: si participas, calcula importe / participantes; si no, 0
-  const computedShare = isParticipant ? (Number(expense.amount || 0) / splitCount) : 0;
-
+  const computedShare = calculateDynamicShare(expense, project?.members, isMe);
   const paidByMe = isMe(expense.paidBy);
   const payerName = paidByMe ? 'Mí' : (expense.paidBy?.name || 'Otro miembro');
 
@@ -244,10 +216,7 @@ export default function ExpenseItem({
             💰 por <span className="text-slate-200 font-medium">{payerName}</span>
           </span>
           <span>
-            a las{' '}
-            <span className="text-slate-200 font-medium">
-              {new Date(expense.createdAt || expense.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
+            a las <span className="text-slate-200 font-medium">{formatTimeHHMM(expense.createdAt || expense.date)}</span>
           </span>
           {!expense.isPersonal && expense.splitBetween?.length > 0 && (
             <span className="text-indigo-300/80 font-medium">
