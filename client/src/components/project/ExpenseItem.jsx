@@ -5,7 +5,6 @@ import { Button } from '../ui';
 import {
   extractEntityId,
   calculateDynamicShare,
-  buildRecalculatedSplit,
   formatTimeHHMM,
 } from '../../utils/expenseHelpers';
 
@@ -24,6 +23,7 @@ export default function ExpenseItem({
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionFeedback, setActionFeedback] = useState(null);
 
+  const [selectedMembers, setSelectedMembers] = useState([]);
   const [editForm, setEditForm] = useState({
     title: '',
     amount: '',
@@ -37,6 +37,17 @@ export default function ExpenseItem({
     setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const toggleMemberSplit = (memberId) => {
+    setSelectedMembers((prev) => {
+      const cleanId = extractEntityId(memberId);
+      if (prev.includes(cleanId)) {
+        if (prev.length === 1) return prev; // Evita dejar el reparto sin ningún participante
+        return prev.filter((id) => id !== cleanId);
+      }
+      return [...prev, cleanId];
+    });
+  };
+
   const handleStartEditing = () => {
     setIsConfirmingDelete(false);
     setIsConfirmingSave(false);
@@ -44,6 +55,13 @@ export default function ExpenseItem({
 
     const existingPayerId = extractEntityId(expense.paidBy);
     const currentId = extractEntityId(currentUser);
+
+    // Mapea los participantes actuales en el split, o todos los miembros del proyecto si no existía
+    const currentSplitMembers = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
+      ? expense.splitBetween.map((s) => extractEntityId(s.user || s))
+      : (project?.members || []).map((m) => extractEntityId(m));
+
+    setSelectedMembers(currentSplitMembers);
 
     setEditForm({
       title: expense.title || '',
@@ -69,7 +87,16 @@ export default function ExpenseItem({
     }
 
     const payerIdToSend = extractEntityId(editForm.paidBy);
-    const updatedSplit = buildRecalculatedSplit(expense.splitBetween, numericAmount);
+
+    // Construye el split recalculado con base en los miembros seleccionados
+    let updatedSplit = [];
+    if (!editForm.isPersonal && selectedMembers.length > 0) {
+      const sharePerPerson = Number((numericAmount / selectedMembers.length).toFixed(2));
+      updatedSplit = selectedMembers.map((memberId) => ({
+        user: extractEntityId(memberId),
+        share: sharePerPerson,
+      }));
+    }
 
     setIsProcessing(true);
     try {
@@ -148,6 +175,9 @@ export default function ExpenseItem({
           project={project}
           currentUser={currentUser}
           disabled={isProcessing}
+          showSplitSelector={true}
+          selectedMembers={selectedMembers}
+          onToggleMember={toggleMemberSplit}
         />
 
         <div className="flex justify-end items-center gap-2 pt-2 border-t border-slate-800">
