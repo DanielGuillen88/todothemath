@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Users, UserPlus, Crown, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Users, UserPlus, Crown, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Input, Button } from '../ui';
 
 export default function MemberList({ project, onAddMember }) {
   const [inviteEmail, setInviteEmail] = useState('');
@@ -12,21 +13,19 @@ export default function MemberList({ project, onAddMember }) {
 
     const emailToValidate = inviteEmail.trim().toLowerCase();
 
-    // Validación inline si el campo está vacío
     if (!emailToValidate) {
       setInviteMsg({
         type: 'error',
-        text: 'Por favor, introduce el correo electrónico del participante.',
+        text: '🙏🏻 Por favor, introduce el correo electrónico del participante.',
       });
       return;
     }
 
-    // Validación básica de formato email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(emailToValidate)) {
       setInviteMsg({
         type: 'error',
-        text: 'Introduce un formato de correo electrónico válido.',
+        text: '😵 Introduce un formato de correo electrónico válido.',
       });
       return;
     }
@@ -37,7 +36,7 @@ export default function MemberList({ project, onAddMember }) {
       await onAddMember(emailToValidate);
       setInviteMsg({
         type: 'success',
-        text: 'Participante añadido con éxito.',
+        text: '✅ Participante añadido con éxito.',
       });
       setInviteEmail('');
       setTimeout(() => setInviteMsg({ text: '', type: '' }), 3000);
@@ -61,35 +60,27 @@ export default function MemberList({ project, onAddMember }) {
       </h2>
 
       <form onSubmit={handleInvite} noValidate className="mb-4">
-        <div className="flex gap-2">
-          <input
-            type="email"
-            disabled={isInviting}
-            placeholder="amigo@correo.com"
-            value={inviteEmail}
-            onChange={(e) => {
-              setInviteEmail(e.target.value);
-              if (inviteMsg.text) setInviteMsg({ text: '', type: '' });
-            }}
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-          />
-          <button
+        <div className="flex gap-2 items-start">
+          <div className="flex-1">
+            <Input
+              type="email"
+              disabled={isInviting}
+              placeholder="amigo@correo.com"
+              value={inviteEmail}
+              onChange={(e) => {
+                setInviteEmail(e.target.value);
+                if (inviteMsg.text) setInviteMsg({ text: '', type: '' });
+              }}
+            />
+          </div>
+          <Button
             type="submit"
-            disabled={isInviting}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+            isLoading={isInviting}
+            icon={UserPlus}
+            className="shrink-0 h-[34px]"
           >
-            {isInviting ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Añadiendo...</span>
-              </>
-            ) : (
-              <>
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Añadir</span>
-              </>
-            )}
-          </button>
+            Añadir
+          </Button>
         </div>
 
         {inviteMsg.text && (
