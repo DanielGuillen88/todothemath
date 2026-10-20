@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CreditCard, Plus, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
-import { extractEntityId, buildExpensePayload } from '../../utils/expenseHelpers/index.js';
+import { extractEntityId, buildCreateExpensePayload } from '../../utils/expenseHelpers/index.js';
 
 export default function ExpenseForm({ project, currentUser, onSubmit }) {
   const currentUserId = extractEntityId(currentUser);

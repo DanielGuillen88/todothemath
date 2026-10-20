@@ -11,4 +11,4 @@ export { buildRecalculatedSplit } from './buildRecalculatedSplit.js';
 export { formatTimeHHMM } from './formatTimeHHMM.js';
 
 // Genera el payload normalizado para crear un nuevo gasto.
-export { buildExpensePayload } from './buildExpensePayload.js';
+export { buildCreateExpensePayload } from './buildCreateExpensePayload.js';
