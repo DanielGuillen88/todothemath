@@ -1,7 +1,13 @@
 import { useState } from 'react';
-import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2 } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
-import { extractEntityId, calculateDynamicShare, buildRecalculatedSplit, formatTimeHHMM } from '../../utils/expenseHelpers/index.js';
+import { Button } from '../ui';
+import {
+  extractEntityId,
+  calculateDynamicShare,
+  buildRecalculatedSplit,
+  formatTimeHHMM,
+} from '../../utils/expenseHelpers';
 
 export default function ExpenseItem({
   expense,
@@ -148,44 +154,45 @@ export default function ExpenseItem({
           {isConfirmingSave ? (
             <div className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-700/60 px-2.5 py-1 rounded-lg">
               <span className="text-xs text-indigo-200 font-medium mr-1">¿Guardar cambios?</span>
-              <button
-                type="button"
-                disabled={isProcessing}
+              <Button
+                size="sm"
+                variant="primary"
+                isLoading={isProcessing}
+                icon={Check}
                 onClick={handleSave}
-                className="p-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              </button>
-              <button
-                type="button"
+                className="bg-emerald-600 hover:bg-emerald-500"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
                 disabled={isProcessing}
+                icon={X}
                 onClick={() => setIsConfirmingSave(false)}
-                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+              />
             </div>
           ) : (
             <>
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant="secondary"
                 disabled={isProcessing}
+                icon={X}
                 onClick={() => {
                   setIsEditing(false);
                   setActionFeedback(null);
                 }}
-                className="flex items-center gap-1 px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" /> Cancelar
-              </button>
-              <button
-                type="button"
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
                 disabled={isProcessing}
+                icon={Check}
                 onClick={() => setIsConfirmingSave(true)}
-                className="flex items-center gap-1 px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors cursor-pointer"
               >
-                <Check className="w-3.5 h-3.5" /> Guardar
-              </button>
+                Guardar
+              </Button>
             </>
           )}
         </div>
@@ -237,41 +244,39 @@ export default function ExpenseItem({
         {isConfirmingDelete ? (
           <div className="flex items-center gap-2 bg-slate-950/90 border border-red-900/60 px-2.5 py-1.5 rounded-lg shadow-inner">
             <span className="text-xs text-red-300 font-medium mr-1">¿Eliminar?</span>
-            <button
-              type="button"
-              disabled={isProcessing}
+            <Button
+              size="sm"
+              variant="danger"
+              isLoading={isProcessing}
+              icon={Check}
               onClick={handleDelete}
-              className="p-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-            </button>
-            <button
-              type="button"
+            />
+            <Button
+              size="sm"
+              variant="secondary"
               disabled={isProcessing}
+              icon={X}
               onClick={() => setIsConfirmingDelete(false)}
-              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            />
           </div>
         ) : (
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={handleStartEditing}
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Pencil}
               title="Editar gasto"
-              className="text-slate-500 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-900/60 transition-colors cursor-pointer"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsConfirmingDelete(true)}
+              onClick={handleStartEditing}
+              className="px-1.5 py-1.5 text-slate-500 hover:text-indigo-400 hover:bg-slate-900/60"
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Trash2}
               title="Eliminar gasto"
-              className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-900/60 transition-colors cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+              onClick={() => setIsConfirmingDelete(true)}
+              className="px-1.5 py-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900/60"
+            />
           </div>
         )}
 

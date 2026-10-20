@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Plus, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { CreditCard, Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
-import { extractEntityId, buildCreateExpensePayload } from '../../utils/expenseHelpers/index.js';
+import { Button } from '../ui';
+import { extractEntityId, buildCreateExpensePayload } from '../../utils/expenseHelpers';
 
 export default function ExpenseForm({ project, currentUser, onSubmit }) {
   const currentUserId = extractEntityId(currentUser);
@@ -125,23 +126,15 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
           />
 
           <div className="flex justify-end pt-2">
-            <button
+            <Button
               type="submit"
-              disabled={isSubmitting}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-xs px-5 py-2.5 rounded-lg transition-colors shadow-sm cursor-pointer"
+              variant="primary"
+              size="md"
+              isLoading={isSubmitting}
+              icon={Plus}
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Guardando...</span>
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4" />
-                  <span>Registrar Gasto</span>
-                </>
-              )}
-            </button>
+              Registrar Gasto
+            </Button>
           </div>
         </form>
       )}
