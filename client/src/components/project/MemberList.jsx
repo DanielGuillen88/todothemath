@@ -1,31 +1,53 @@
 import { useState } from 'react';
-import { Users, UserPlus, Crown } from 'lucide-react';
+import { Users, UserPlus, Crown, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function MemberList({ project, onAddMember }) {
-    
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMsg, setInviteMsg] = useState({ text: '', type: '' });
 
   const handleInvite = async (e) => {
     e.preventDefault();
-    if (!inviteEmail.trim()) return;
-
-    setIsInviting(true);
     setInviteMsg({ text: '', type: '' });
 
+    const emailToValidate = inviteEmail.trim().toLowerCase();
+
+    // Validación inline si el campo está vacío
+    if (!emailToValidate) {
+      setInviteMsg({
+        type: 'error',
+        text: 'Por favor, introduce el correo electrónico del participante.',
+      });
+      return;
+    }
+
+    // Validación básica de formato email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailToValidate)) {
+      setInviteMsg({
+        type: 'error',
+        text: 'Introduce un formato de correo electrónico válido.',
+      });
+      return;
+    }
+
+    setIsInviting(true);
+
     try {
-      await onAddMember(inviteEmail.trim().toLowerCase());
-      setInviteMsg({ text: 'Participante añadido con éxito.', type: 'success' });
+      await onAddMember(emailToValidate);
+      setInviteMsg({
+        type: 'success',
+        text: 'Participante añadido con éxito.',
+      });
       setInviteEmail('');
+      setTimeout(() => setInviteMsg({ text: '', type: '' }), 3000);
     } catch (err) {
       setInviteMsg({
-        text: err.response?.data?.message || 'Error al añadir el participante.',
         type: 'error',
+        text: err.response?.data?.message || 'Error al añadir el participante.',
       });
     } finally {
       setIsInviting(false);
-      setTimeout(() => setInviteMsg({ text: '', type: '' }), 4000);
     }
   };
 
@@ -38,30 +60,53 @@ export default function MemberList({ project, onAddMember }) {
         </div>
       </h2>
 
-      <form onSubmit={handleInvite} className="mb-4">
+      <form onSubmit={handleInvite} noValidate className="mb-4">
         <div className="flex gap-2">
           <input
             type="email"
-            required
+            disabled={isInviting}
             placeholder="amigo@correo.com"
             value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            onChange={(e) => {
+              setInviteEmail(e.target.value);
+              if (inviteMsg.text) setInviteMsg({ text: '', type: '' });
+            }}
+            className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={isInviting}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
           >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>{isInviting ? '...' : 'Añadir'}</span>
+            {isInviting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Añadiendo...</span>
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Añadir</span>
+              </>
+            )}
           </button>
         </div>
 
         {inviteMsg.text && (
-          <p className={`text-xs mt-2 ${inviteMsg.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
-            {inviteMsg.text}
-          </p>
+          <div
+            className={`mt-2.5 p-2.5 rounded-lg flex items-center gap-2 text-xs font-medium ${
+              inviteMsg.type === 'success'
+                ? 'bg-emerald-950/40 border border-emerald-800/80 text-emerald-300'
+                : 'bg-red-950/40 border border-red-800/80 text-red-300'
+            }`}
+          >
+            {inviteMsg.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+            )}
+            <span>{inviteMsg.text}</span>
+          </div>
         )}
       </form>
 

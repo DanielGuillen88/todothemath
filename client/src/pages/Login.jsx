@@ -47,7 +47,7 @@ export default function Login() {
             <label className="block text-sm font-medium text-slate-300 mb-1.5">Correo Electrónico</label>
             <input
               type="email"
-              required
+              // required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="tu@email.com"
@@ -59,7 +59,7 @@ export default function Login() {
             <label className="block text-sm font-medium text-slate-300 mb-1.5">Contraseña</label>
             <input
               type="password"
-              required
+              // required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"

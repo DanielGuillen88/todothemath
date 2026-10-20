@@ -21,8 +21,11 @@ export default function ProjectHeader({ project, metrics }) {
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 bg-slate-950 px-5 py-3 rounded-xl border border-slate-800 self-start sm:self-auto">
           <div>
             <p className="text-xs text-slate-400 font-medium">Personales</p>
-            <p className="text-base sm:text-lg font-bold text-slate-200">
+            {/* <p className="text-base sm:text-lg font-bold text-slate-200">
               {metrics.myPersonal.toFixed(2)} {project?.currency || '€'}
+            </p> */}
+            <p className="text-base sm:text-lg font-bold text-slate-200">
+              {metrics.myPersonal.toFixed(2)}
             </p>
           </div>
 
@@ -30,8 +33,11 @@ export default function ProjectHeader({ project, metrics }) {
 
           <div>
             <p className="text-xs text-slate-400 font-medium">Total</p>
-            <p className="text-base sm:text-lg font-bold text-emerald-400">
+            {/* <p className="text-base sm:text-lg font-bold text-emerald-400">
               {metrics.myRealTotal.toFixed(2)} {project?.currency || '€'}
+            </p> */}
+          <p className="text-base sm:text-lg font-bold text-emerald-400">
+              {metrics.myRealTotal.toFixed(2)}
             </p>
           </div>
 
