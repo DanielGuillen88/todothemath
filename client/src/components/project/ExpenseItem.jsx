@@ -249,9 +249,26 @@ export default function ExpenseItem({
               <span>•</span>
             </>
           )}
+          {/* <span>
+            💰 por <span className="text-slate-200 font-medium">{payerName}</span>
+          </span>
+          <span>
+            a las <span className="text-slate-200 font-medium">{formatTimeHHMM(expense.createdAt || expense.date)}</span>
+          </span> */}
           <span>
             💰 por <span className="text-slate-200 font-medium">{payerName}</span>
           </span>
+
+          {/* Si está agrupado por categoría o sin agrupar, mostramos el día */}
+          {groupBy !== 'date' && groupBy !== 'both' && (
+            <span>
+              el <span className="text-slate-200 font-medium">
+                {new Date(expense.date || expense.createdAt).toLocaleDateString()}
+              </span>
+            </span>
+          )}
+
+          {/* Mostramos la hora si está disponible */}
           <span>
             a las <span className="text-slate-200 font-medium">{formatTimeHHMM(expense.createdAt || expense.date)}</span>
           </span>

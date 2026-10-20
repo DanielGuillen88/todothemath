@@ -1,11 +1,22 @@
 import { useState, useMemo } from 'react';
 import { Receipt, Filter, Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import ExpenseItem from './ExpenseItem';
+import ExpenseFilters from './ExpenseFilters';
 
-export default function ExpenseList({ expenses, project, currentUser, isMe, getMyShareForExpense, onUpdateExpense, onDeleteExpense }) {
-  
+export default function ExpenseList({
+  expenses = [],
+  project,
+  currentUser,
+  isMe,
+  getMyShareForExpense,
+  onUpdateExpense,
+  onDeleteExpense,
+}) {
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [groupBy, setGroupBy] = useState('date');
+
   const todayStr = useMemo(() => new Date().toLocaleDateString(), []);
   const [openAccordions, setOpenAccordions] = useState({ [todayStr]: true });
 
@@ -13,14 +24,37 @@ export default function ExpenseList({ expenses, project, currentUser, isMe, getM
     setOpenAccordions((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Obtener categorías únicas presentes en la lista de gastos
+  const availableCategories = useMemo(() => {
+    const set = new Set();
+    expenses.forEach((e) => {
+      if (e.category) set.add(e.category);
+    });
+    return Array.from(set);
+  }, [expenses]);
+
+  // Filtrado compuesto: tipo + categoría + búsqueda por concepto
   const filteredExpenses = useMemo(() => {
     return expenses.filter((exp) => {
-      if (filterType === 'shared') return !exp.isPersonal;
-      if (filterType === 'personal') return exp.isPersonal;
+      if (filterType === 'shared' && exp.isPersonal) return false;
+      if (filterType === 'personal' && !exp.isPersonal) return false;
+
+      if (selectedCategory !== 'all' && exp.category !== selectedCategory) {
+        return false;
+      }
+
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        const matchesTitle = exp.title?.toLowerCase().includes(term);
+        const matchesPayer = exp.paidBy?.name?.toLowerCase().includes(term);
+        if (!matchesTitle && !matchesPayer) return false;
+      }
+
       return true;
     });
-  }, [expenses, filterType]);
+  }, [expenses, filterType, selectedCategory, searchTerm]);
 
+  // Agrupamiento ordenado cronológicamente
   const groupedExpenses = useMemo(() => {
     const sorted = [...filteredExpenses].sort(
       (a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
@@ -42,7 +76,7 @@ export default function ExpenseList({ expenses, project, currentUser, isMe, getM
     if (groupBy === 'category') {
       const groups = {};
       sorted.forEach((exp) => {
-        const cat = exp.category || 'Sin categoría';
+        const cat = exp.category || 'Otros';
         if (!groups[cat]) groups[cat] = { myTotal: 0, items: [] };
         groups[cat].items.push(exp);
         groups[cat].myTotal += getMyShareForExpense(exp);
@@ -54,7 +88,7 @@ export default function ExpenseList({ expenses, project, currentUser, isMe, getM
       const groups = {};
       sorted.forEach((exp) => {
         const d = new Date(exp.date || exp.createdAt).toLocaleDateString();
-        const cat = exp.category || 'Sin categoría';
+        const cat = exp.category || 'Otros';
         const share = getMyShareForExpense(exp);
 
         if (!groups[d]) groups[d] = { myTotal: 0, categories: {} };
@@ -72,41 +106,24 @@ export default function ExpenseList({ expenses, project, currentUser, isMe, getM
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold text-white flex items-center gap-2">
           <Receipt className="w-5 h-5 text-indigo-400" />
           <span>Historial de Gastos ({filteredExpenses.length})</span>
         </h2>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="bg-transparent text-slate-300 focus:outline-none cursor-pointer"
-            >
-              <option value="all" className="bg-slate-900">Todos</option>
-              <option value="shared" className="bg-slate-900">Compartidos</option>
-              <option value="personal" className="bg-slate-900">Solo Personales</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
-            <Layers className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value)}
-              className="bg-transparent text-slate-300 focus:outline-none cursor-pointer"
-            >
-              <option value="none" className="bg-slate-900">Sin agrupar</option>
-              <option value="date" className="bg-slate-900">Por Día</option>
-              <option value="category" className="bg-slate-900">Por Categoría</option>
-              <option value="both" className="bg-slate-900">Por Día y Categoría</option>
-            </select>
-          </div>
-        </div>
       </div>
+
+      <ExpenseFilters
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        filterType={filterType}
+        onFilterTypeChange={setFilterType}
+        selectedCategory={selectedCategory}
+        onCategoryChange={setSelectedCategory}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+        categories={availableCategories}
+      />
 
       {filteredExpenses.length === 0 ? (
         <p className="text-slate-500 text-sm text-center py-8">
@@ -208,7 +225,11 @@ export default function ExpenseList({ expenses, project, currentUser, isMe, getM
                   className="w-full flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2 text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
-                    {isOpen ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
+                    {isOpen ? (
+                      <ChevronDown className="w-4 h-4 text-indigo-400" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-slate-500" />
+                    )}
                     <span className="font-semibold text-indigo-400 text-sm">{d}</span>
                     {isToday && (
                       <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300">
