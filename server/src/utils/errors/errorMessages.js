@@ -15,8 +15,10 @@ export const ERROR_MESSAGES = {
         FORBIDDEN_MANAGE_MEMBERS: '⛔️ No tienes permisos para gestionar miembros en este proyecto',
         FORBIDDEN_EDIT: '⛔️ No tienes permisos para editar este proyecto (solo el creador)',
         FORBIDDEN_DELETE: '⛔️ No tienes permisos para eliminar este proyecto (solo el creador)',
+        FORBIDDEN_REMOVE_OWNER: '⛔️ No puedes eliminar al creador del proyecto',
         MEMBER_EMAIL_REQUIRED: '😅 Debes indicar el email del participante.',
         ALREADY_MEMBER: '‼️ El usuario ya forma parte de este proyecto',
+        NOT_MEMBER: '🙈 El usuario no forma parte de este proyecto',
     },
     EXPENSE: {
         INVALID_AMOUNT: '💶 Debes indicar un concepto válido y un importe superior a 0',

@@ -10,3 +10,5 @@ export { getProjectById } from './getProjectById.js';
 export { getProjects } from './getProjects.js';
 // Actualizar información del proyecto
 export { updateProject } from './updateProject.js';
+// Eliminar un miembro de un proyecto
+export { removeMember } from './removeMember.js';

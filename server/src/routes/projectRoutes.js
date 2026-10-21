@@ -2,6 +2,7 @@ import express from 'express';
 import { createProject, getProjects, getProjectById, updateProject, deleteProject, addMemberToProject } from '../controllers/projectController/index.js';
 import { protect } from '../middlewares/auth.js';
 import expenseRouter from './expenseRoutes.js';
+import { removeMember } from '../controllers/projectController/removeMember.js';
 
 const router = express.Router();
 
@@ -27,5 +28,6 @@ router
   .delete(deleteProject);
 
 router.post('/:id/members', addMemberToProject);
+router.delete('/:id/members/:memberId', removeMember);
 
 export default router;
