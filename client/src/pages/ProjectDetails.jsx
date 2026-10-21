@@ -56,7 +56,7 @@ export default function ProjectDetails() {
         <ArrowLeft className="w-4 h-4" /> Volver a Mis Proyectos
       </Link>
 
-      <ProjectHeader project={project} metrics={metrics} />
+      <ProjectHeader project={project} metrics={metrics} currentUser={user}/>
       <SettlementList balances={balances} currency={project?.currency} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

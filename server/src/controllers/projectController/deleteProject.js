@@ -8,19 +8,25 @@ import { ERROR_MESSAGES, NotFoundError, ForbiddenError } from '../../utils/error
 export const deleteProject = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { projectName } = req.body;
     const project = await Project.findById(id);
 
     if (!project) {
-      // return res.status(404).json({ status: 'fail', message: 'Proyecto no encontrado' });
       return next(new NotFoundError(ERROR_MESSAGES.PROJECT.NOT_FOUND));
     }
 
     if (!isProjectOwner(project, req.user._id)) {
-      // return res.status(403).json({
-      //   status: 'fail',
-      //   message: 'No tienes permisos para eliminar este proyecto (solo el creador puede hacerlo)'
-      // });
       return next(new ForbiddenError(ERROR_MESSAGES.PROJECT.FORBIDDEN_DELETE));
+    }
+
+    // 🔒 Validación estricta del nombre (insensible a mayúsculas/minúsculas y espacios)
+    const storedName = (project.name || project.title || '').trim().toLowerCase();
+    const providedName = (projectName || '').trim().toLowerCase();
+
+    if (!providedName || providedName !== storedName) {
+      return next(
+        new BadRequestError(new Error(ERROR_MESSAGES.PROJECT.NOT_MATCHING_NAME))
+      );
     }
 
     // Eliminación en cascada de proyecto y gastos asociados

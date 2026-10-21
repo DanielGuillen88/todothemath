@@ -19,6 +19,7 @@ export const ERROR_MESSAGES = {
         MEMBER_EMAIL_REQUIRED: '😅 Debes indicar el email del participante.',
         ALREADY_MEMBER: '‼️ El usuario ya forma parte de este proyecto',
         NOT_MEMBER: '🙈 El usuario no forma parte de este proyecto',
+        NOT_MATCHING_NAME: '❌ El nombre introducido no coincide con el nombre del proyecto',
     },
     EXPENSE: {
         INVALID_AMOUNT: '💶 Debes indicar un concepto válido y un importe superior a 0',
