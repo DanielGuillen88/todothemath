@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import api from '../services/api';
+import { getProjectById, addMemberToProject, removeMemberFromProject } from '../services/projectService';
+import { getProjectExpenses, getProjectBalances, createExpense, updateExpenseById,  deleteExpenseById } from '../services/expenseService';
 
 export function useProjectDetails(projectId, user) {
-     
   const [project, setProject] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [balances, setBalances] = useState(null);
@@ -29,15 +29,15 @@ export function useProjectDetails(projectId, user) {
       try {
         if (!isSilent) setLoading(true);
         const [projectRes, balancesRes, expensesRes] = await Promise.allSettled([
-          api.get(`/projects/${projectId}`),
-          api.get(`/projects/${projectId}/expenses/balances`),
-          api.get(`/projects/${projectId}/expenses`),
+          getProjectById(projectId),
+          getProjectBalances(projectId),
+          getProjectExpenses(projectId),
         ]);
 
         if (projectRes.status === 'fulfilled') {
           const pData = projectRes.value.data;
           const extracted = pData?.data?.project || pData?.project || pData?.data || pData;
-          if (extracted && (extracted._id || extracted.title)) {
+          if (extracted && (extracted._id || extracted.title || extracted.name)) {
             setProject(extracted);
           }
         }
@@ -116,37 +116,34 @@ export function useProjectDetails(projectId, user) {
   }, [expenses, isMe, getMyShareForExpense]);
 
   const addExpense = async (payload) => {
-    await api.post(`/projects/${projectId}/expenses`, payload);
+    await createExpense(projectId, payload);
     await loadProjectData(true);
   };
 
   const updateExpense = async (expenseId, payload) => {
-    await api.put(`/projects/${projectId}/expenses/${expenseId}`, payload);
+    await updateExpenseById(projectId, expenseId, payload);
     await loadProjectData(true);
   };
 
   const deleteExpense = async (expenseId) => {
-    await api.delete(`/projects/${projectId}/expenses/${expenseId}`);
+    await deleteExpenseById(projectId, expenseId);
     await loadProjectData(true);
   };
 
   const addMember = async (email) => {
-    const res = await api.post(`/projects/${projectId}/members`, { email });
+    const data = await addMemberToProject(projectId, email);
     await loadProjectData(true);
-    return res.data;
+    return data;
+  };
+
+  const removeMember = async (memberId) => {
+    const data = await removeMemberFromProject(projectId, memberId);
+    await loadProjectData(true);
+    return data;
   };
 
   return {
-    project,
-    expenses,
-    balances,
-    loading,
-    metrics,
-    isMe,
-    getMyShareForExpense,
-    addExpense,
-    updateExpense,
-    deleteExpense,
-    addMember,
+    project, expenses, balances, loading, metrics,
+    isMe, getMyShareForExpense, addExpense, updateExpense, deleteExpense, addMember, removeMember
   };
 }

@@ -25,6 +25,7 @@ export default function ProjectDetails() {
     updateExpense,
     deleteExpense,
     addMember,
+    removeMember,
   } = useProjectDetails(id, user);
 
   if (loading && !project) {
@@ -73,7 +74,10 @@ export default function ProjectDetails() {
         </div>
 
         <div className="space-y-6">
-          <MemberList project={project} onAddMember={addMember} />
+          <MemberList
+            project={project} currentUser={user}
+            onAddMember={addMember} onRemoveMember={removeMember}
+          />
         </div>
       </div>
     </div>
