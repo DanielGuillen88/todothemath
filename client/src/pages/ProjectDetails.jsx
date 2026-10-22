@@ -16,6 +16,7 @@ export default function ProjectDetails() {
   const {
     project,
     expenses,
+    settlementHistory,
     balances,
     loading,
     metrics,
@@ -26,6 +27,8 @@ export default function ProjectDetails() {
     deleteExpense,
     addMember,
     removeMember,
+    settle,
+    revertSettle,
   } = useProjectDetails(id, user);
 
   if (loading && !project) {
@@ -57,8 +60,9 @@ export default function ProjectDetails() {
       </Link>
 
       <ProjectHeader project={project} metrics={metrics} currentUser={user}/>
-      <SettlementList balances={balances} currency={project?.currency} />
-
+      <SettlementList
+        balances={balances} currency={project?.currency} currentUser={user}
+        onSettle={settle} onRevertSettle={revertSettle} settlementHistory={settlementHistory}/>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <ExpenseForm project={project} currentUser={user} onSubmit={addExpense} />

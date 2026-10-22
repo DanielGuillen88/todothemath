@@ -10,25 +10,31 @@ import { ERROR_MESSAGES, BadRequestError, NotFoundError, ForbiddenError } from '
 export const createExpense = async (req, res, next) => {
   try {
     const { projectId } = req.params;
-    const { title, amount, splitBetween, category, date, isPersonal, paidBy } = req.body;
+    const {
+      title,
+      amount,
+      splitBetween,
+      category,
+      date,
+      isPersonal,
+      paidBy,
+      isSettlement,
+      paymentMethod,
+    } = req.body;
 
     const numAmount = Number(amount);
     if (!title || !numAmount || numAmount <= 0) {
-      // res.status(400);
-      // throw new Error('<tool_call> Debes indicar un concepto válido y un importe superior a 0');
       return next(new BadRequestError(ERROR_MESSAGES.EXPENSE.INVALID_AMOUNT));
     }
 
     const project = await Project.findById(projectId);
     if (!project) {
-      // res.status(404);
-      // throw new Error('🙃 Proyecto no encontrado');
-      throw new NotFoundError(ERROR_MESSAGES.EXPENSE.PROJECT_NOT_FOUND);
+      return next(new NotFoundError(ERROR_MESSAGES.EXPENSE.PROJECT_NOT_FOUND));
     }
 
     // 1. Evita que usuarios ajenos creen gastos en el proyecto
     if (!hasProjectAccess(project, req.user._id)) {
-      throw new ForbiddenError(ERROR_MESSAGES.PROJECT.FORBIDDEN_ACCESS);
+      return next(new ForbiddenError(ERROR_MESSAGES.PROJECT.FORBIDDEN_ACCESS));
     }
 
     // 2. Determina quién es el pagador del gasto
@@ -51,9 +57,11 @@ export const createExpense = async (req, res, next) => {
       amount: numAmount,
       paidBy: cleanPayerId,
       splitBetween: calculatedSplit,
-      category: category || 'General',
+      category: category || (isSettlement ? 'Liquidación' : 'General'),
       date: date || Date.now(),
       isPersonal: Boolean(isPersonal),
+      isSettlement: Boolean(isSettlement),
+      paymentMethod: paymentMethod || 'bizum', // 👈 Guardamos el método seleccionado
     });
 
     const populatedExpense = await Expense.findById(expense._id)

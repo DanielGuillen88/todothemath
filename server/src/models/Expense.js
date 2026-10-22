@@ -47,6 +47,15 @@ const expenseSchema = new mongoose.Schema(
         },
       },
     ],
+    isSettlement: {
+      type: Boolean,
+      default: false,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['cash', 'bizum', 'bank', 'other'],
+      default: 'bizum',
+    },
   },
   { timestamps: true }
 );
