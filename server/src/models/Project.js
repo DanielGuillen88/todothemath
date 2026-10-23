@@ -35,6 +35,11 @@ const projectSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
+    settlementMode: {
+      type: String,
+      enum: ['simplified', 'direct'],
+      default: 'direct',
+    },
     members: [
       {
         type: mongoose.Schema.Types.ObjectId,

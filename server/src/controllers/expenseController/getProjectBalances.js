@@ -27,7 +27,13 @@ export const getProjectBalances = async (req, res, next) => {
       .populate('paidBy', 'name email')
       .populate('splitBetween.user', 'name email');
 
-    const balanceSummary = calculateBalances(expenses, project.members);
+    // 👇 Leemos el modo guardado en el proyecto
+    const mode = project.settlementMode || 'direct';
+
+    console.log(`[Balances] Proyecto: ${project.title} | Modo activo: ${mode}`);
+
+    // 👇 Pasamos 'mode' como tercer argumento
+    const balanceSummary = calculateBalances(expenses, project.members, mode);
 
     res.status(200).json({
       status: 'success',

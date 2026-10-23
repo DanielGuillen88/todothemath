@@ -54,7 +54,7 @@ const expenseSchema = new mongoose.Schema(
     paymentMethod: {
       type: String,
       enum: ['cash', 'bizum', 'bank', 'other'],
-      default: 'bizum',
+      default: 'bank',
     },
   },
   { timestamps: true }
