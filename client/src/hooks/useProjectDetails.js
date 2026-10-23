@@ -93,11 +93,40 @@ export function useProjectDetails(projectId, user) {
   }, [loadProjectData]);
 
   // 1. Gastos ordinarios
+  // const expenses = useMemo(() => {
+  //   return allExpenses.filter(
+  //     (exp) => !exp.isSettlement && exp.title !== 'Liquidación de deuda'
+  //   );
+  // }, [allExpenses]);
+  // 1. Gastos ordinarios con filtro estricto de privacidad
   const expenses = useMemo(() => {
-    return allExpenses.filter(
-      (exp) => !exp.isSettlement && exp.title !== 'Liquidación de deuda'
-    );
-  }, [allExpenses]);
+    return allExpenses.filter((exp) => {
+      // Excluir reembolsos y liquidaciones del feed de gastos
+      if (exp.isSettlement || exp.title === 'Liquidación de deuda') {
+        return false;
+      }
+
+      const isPayer = isMe(exp.paidBy);
+
+      // Si es un gasto personal, SOLO lo ve quien lo pagó
+      if (exp.isPersonal) {
+        return isPayer;
+      }
+
+      // Si es compartido y lo pagó el usuario actual, siempre lo ve
+      if (isPayer) {
+        return true;
+      }
+
+      // Si es compartido y lo pagó otro, verificar si el usuario actual está en splitBetween
+      if (Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0) {
+        return exp.splitBetween.some((item) => isMe(item.user || item));
+      }
+
+      // Reparto equitativo por defecto a todos los miembros del proyecto
+      return true;
+    });
+  }, [allExpenses, isMe]);
 
   // 2. Historial de liquidaciones
   const settlementHistory = useMemo(() => {
@@ -159,7 +188,6 @@ export function useProjectDetails(projectId, user) {
     let totalProjectShared = 0;
     let myPersonalOnlyTotal = 0;
 
-    // Solo calculamos métricas sobre gastos ordinarios (no liquidaciones)
     expenses.forEach((exp) => {
       const rawAmount = Number(exp.amount || 0);
       const isPaidByMe = isMe(exp.paidBy);
