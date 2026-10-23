@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getProjects, updateProjectById } from '../services/projectService';
 import { FolderKanban, Plus, X, AlertCircle } from 'lucide-react';
-import { Input, Select, Button } from '../components/ui';
+import { Button } from '../components/ui';
 import ProjectCard from '../components/project/ProjectCard';
 import DeleteProjectModal from '../components/project/DeleteProjectModal';
+import ProjectFormFields from '../components/project/ProjectFormFields';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -14,11 +15,17 @@ export default function Dashboard() {
 
   // Estados para modal de edición
   const [editingProject, setEditingProject] = useState(null);
-  const [editForm, setEditForm] = useState({ title: '', description: '', budget: '', currency: 'EUR', type: 'trip' });
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    budget: '',
+    currency: 'EUR',
+    type: 'trip',
+    settlementMode: 'direct',
+  });
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Estado para modal de eliminación
   const [deletingProject, setDeletingProject] = useState(null);
 
   const fetchProjects = async () => {
@@ -47,8 +54,13 @@ export default function Dashboard() {
       budget: p.budget !== undefined && p.budget !== null ? p.budget : '',
       currency: p.currency || 'EUR',
       type: p.type || 'trip',
+      settlementMode: p.settlementMode || 'direct',
     });
     setErrorMsg('');
+  };
+
+  const handleFieldChange = (field, value) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleUpdate = async (e) => {
@@ -68,6 +80,7 @@ export default function Dashboard() {
         budget: editForm.budget !== '' ? Number(editForm.budget) : 0,
         currency: editForm.currency,
         type: editForm.type || 'trip',
+        settlementMode: editForm.settlementMode || 'direct',
       });
       setEditingProject(null);
       await fetchProjects();
@@ -141,13 +154,13 @@ export default function Dashboard() {
         onSuccess={handleDeletedSuccess}
       />
 
-      {/* Modal para Editar Proyecto */}
+      {/* Modal de Edición con campos compartidos */}
       {editingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative my-8">
             <button
               onClick={() => setEditingProject(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+              className="absolute top-4 right-4 text-slate-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -162,57 +175,19 @@ export default function Dashboard() {
             )}
 
             <form onSubmit={handleUpdate} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Título del Proyecto</label>
-                <Input
-                  type="text"
-                  required
-                  value={editForm.title}
-                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                />
-              </div>
+              <ProjectFormFields
+                values={editForm}
+                onChange={handleFieldChange}
+                disabled={isUpdating}
+              />
 
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Descripción</label>
-                <textarea
-                  rows="3"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Presupuesto</label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={editForm.budget}
-                    onChange={(e) => setEditForm({ ...editForm, budget: e.target.value })}
-                    placeholder="Opcional"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Moneda</label>
-                  <Select
-                    value={editForm.currency}
-                    onChange={(e) => setEditForm({ ...editForm, currency: e.target.value })}
-                  >
-                    <option value="EUR">EUR (€)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="GBP">GBP (£)</option>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   onClick={() => setEditingProject(null)}
+                  disabled={isUpdating}
                 >
                   Cancelar
                 </Button>
