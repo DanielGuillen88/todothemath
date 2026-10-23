@@ -11,7 +11,14 @@ export default function ExpenseFields({
   selectedMembers = [],
   onToggleMember = () => {},
 }) {
-  const currentUserId = extractEntityId(currentUser);
+  const isShared = !values.isPersonal;
+
+  const handleSharedCheckboxChange = (e) => {
+    const willBeShared = e.target.checked;
+    // Si se marca como compartido -> isPersonal: false
+    // Si se desmarca -> isPersonal: true
+    onChange('isPersonal', !willBeShared);
+  };
 
   return (
     <>
@@ -53,7 +60,7 @@ export default function ExpenseFields({
           />
         </div>
 
-        <div>
+        <div className="sm:col-span-2">
           <Select
             id="expense-category"
             label="Categoría"
@@ -71,59 +78,44 @@ export default function ExpenseFields({
           </Select>
         </div>
 
-        {!values.isPersonal && (
-          <div>
-            <Select
-              id="expense-paidBy"
-              label="Pagado por"
-              disabled={disabled}
-              value={String(values.paidBy || '')}
-              onChange={(e) => onChange('paidBy', e.target.value)}
-            >
-              {project?.members?.map((m, mIdx) => {
-                const memberId = extractEntityId(m);
-                const isCurrent = memberId === currentUserId;
-                const memberName = m?.name || (memberId ? `Miembro (${memberId.slice(-4)})` : `Miembro ${mIdx + 1}`);
-
-                return (
-                  <option key={memberId || `mem-${mIdx}`} value={memberId}>
-                    {memberName} {isCurrent ? '(Tú)' : ''}
-                  </option>
-                );
-              })}
-            </Select>
-          </div>
-        )}
-
-        <div className="sm:col-span-3 pt-1">
-          <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+        {/* Checkbox invertido: desmarcado = personal, marcado = compartido */}
+        <div className="sm:col-span-3 pt-2">
+          <label className="inline-flex items-center gap-2.5 cursor-pointer text-xs text-slate-300 font-medium select-none">
             <input
               type="checkbox"
               disabled={disabled}
-              checked={values.isPersonal}
-              onChange={(e) => onChange('isPersonal', e.target.checked)}
-              className="w-3.5 h-3.5 rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-50"
+              checked={isShared}
+              onChange={handleSharedCheckboxChange}
+              className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-50"
             />
-            <span>Gasto personal (solo lo asume quien pagó, no entra en el reparto)</span>
+            <span>Gasto compartido (dividir con otros miembros del proyecto)</span>
           </label>
+          <p className="text-[11px] text-slate-500 pl-6.5 mt-0.5">
+            {isShared
+              ? 'Este gasto entrará en el cálculo de saldos y se repartirá con los miembros seleccionados abajo.'
+              : 'Gasto personal: solo tú lo asumes, no afectará a los saldos de los demás.'}
+          </p>
         </div>
       </div>
 
-      {showSplitSelector && !values.isPersonal && project?.members && project.members.length > 1 && (
-        <div className="mt-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-          <div className="flex items-center justify-between mb-2">
+      {/* Selector de reparto: SOLO visible cuando está marcado como compartido */}
+      {showSplitSelector && isShared && project?.members && project.members.length > 1 && (
+        <div className="mt-3.5 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-2">
+          <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-400">Dividir gasto entre:</span>
-            <span className="text-[11px] text-indigo-400">
+            <span className="text-[11px] font-semibold text-indigo-400">
               {selectedMembers.length} seleccionados (
               {Number(values.amount ? (Number(values.amount) / (selectedMembers.length || 1)).toFixed(2) : 0)}{' '}
               {project?.currency || '€'}/persona)
             </span>
           </div>
+
           <div className="flex flex-wrap gap-1.5">
             {project.members.map((m, idx) => {
               const memberId = extractEntityId(m);
               const isIncluded = selectedMembers.some((mid) => extractEntityId(mid) === memberId);
               const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+              const isCurrent = memberId === extractEntityId(currentUser);
 
               return (
                 <button
@@ -138,7 +130,7 @@ export default function ExpenseFields({
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${isIncluded ? 'bg-indigo-400' : 'bg-slate-600'}`}></span>
-                  {memberName}
+                  <span>{memberName} {isCurrent ? '(Tú)' : ''}</span>
                 </button>
               );
             })}

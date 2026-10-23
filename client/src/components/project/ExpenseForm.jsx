@@ -5,15 +5,22 @@ import { Button } from '../ui';
 import { extractEntityId, buildCreateExpensePayload } from '../../utils/expenseHelpers';
 
 export default function ExpenseForm({ project, currentUser, onSubmit }) {
-  const currentUserId = extractEntityId(currentUser);
+  const currentUserId = String(
+    currentUser?._id ||
+    currentUser?.id ||
+    currentUser?.user?._id ||
+    currentUser?.user?.id ||
+    extractEntityId(currentUser) ||
+    ''
+  );
 
   const getInitialForm = () => ({
     title: '',
     amount: '',
-    category: 'Otros',
+    category: 'Comida',
     date: new Date().toISOString().split('T')[0],
-    isPersonal: true,
-    paidBy: currentUserId,
+    isPersonal: true, // 👈 Por defecto es gasto personal (checkbox desmarcado)
+    paidBy: currentUserId, // 👈 Siempre el usuario autenticado
   });
 
   const [form, setForm] = useState(getInitialForm);
@@ -21,26 +28,25 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
+  // Sincronizar participantes disponibles y asegurar pagador
   useEffect(() => {
-    if (project?.members) {
-      setSelectedMembers(project.members.map((m) => extractEntityId(m)));
-      if (!form.paidBy) {
-        setForm((prev) => ({
-          ...prev,
-          paidBy: currentUserId || extractEntityId(project.members[0]),
-        }));
-      }
+    if (project?.members && project.members.length > 0) {
+      setSelectedMembers(project.members.map((m) => String(extractEntityId(m))));
     }
-  }, [project, currentUserId, form.paidBy]);
+    if (currentUserId) {
+      setForm((prev) => ({ ...prev, paidBy: currentUserId }));
+    }
+  }, [project, currentUserId]);
 
   const handleFieldChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const toggleMemberSplit = (memberId) => {
+    const cleanId = String(extractEntityId(memberId));
     setSelectedMembers((prev) => {
-      const cleanId = extractEntityId(memberId);
       if (prev.includes(cleanId)) {
+        // Evitamos dejar el reparto con 0 personas
         if (prev.length === 1) return prev;
         return prev.filter((id) => id !== cleanId);
       }
@@ -69,7 +75,13 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
       return;
     }
 
-    const payload = buildCreateExpensePayload(form, selectedMembers, currentUserId);
+    // Aseguramos que paidBy siempre sea el usuario que está rellenando el formulario
+    const normalizedForm = {
+      ...form,
+      paidBy: currentUserId,
+    };
+
+    const payload = buildCreateExpensePayload(normalizedForm, selectedMembers, currentUserId);
 
     setIsSubmitting(true);
     try {
@@ -79,7 +91,7 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
       setForm(getInitialForm());
 
       if (project?.members) {
-        setSelectedMembers(project.members.map((m) => extractEntityId(m)));
+        setSelectedMembers(project.members.map((m) => String(extractEntityId(m))));
       }
 
       setTimeout(() => setFeedback(null), 2000);
