@@ -1,6 +1,3 @@
-import { Project } from '../../models/Project.js';
-import { ERROR_MESSAGES, BadRequestError, NotFoundError, ForbiddenError } from '../../utils/errors/index.js';
-
 // @desc    Eliminar un miembro de un proyecto
 // @route   DELETE /api/projects/:id/members/:memberId
 // @access  Private
@@ -30,18 +27,63 @@ export const removeMember = async (req, res, next) => {
       return next(new BadRequestError(ERROR_MESSAGES.PROJECT.NOT_MEMBER));
     }
 
-    // 4. Eliminar del array de miembros
+    // 4. Verificación de integridad financiera:
+    // ¿Pagó algún gasto en este proyecto?
+    const paidExpensesCount = await Expense.countDocuments({
+      project: projectId,
+      paidBy: memberId,
+    });
+
+    if (paidExpensesCount > 0) {
+      return next(
+        new BadRequestError(
+          'No se puede expulsar a este participante porque figura como pagador de gastos registrados. Edita o elimina sus gastos primero.'
+        )
+      );
+    }
+
+    // ¿Forma parte del reparto (splitBetween) de algún gasto compartido?
+    const splitExpensesCount = await Expense.countDocuments({
+      project: projectId,
+      isPersonal: false,
+      'splitBetween.user': memberId,
+    });
+
+    if (splitExpensesCount > 0) {
+      return next(
+        new BadRequestError(
+          'No se puede expulsar a este participante porque tiene gastos compartidos asignados. Reasigna los repartos antes de continuar.'
+        )
+      );
+    }
+
+    // ¿Tiene liquidaciones registradas (pagadas o recibidas)?
+    const settlementsCount = await Settlement.countDocuments({
+      project: projectId,
+      $or: [{ from: memberId }, { to: memberId }],
+    });
+
+    if (settlementsCount > 0) {
+      return next(
+        new BadRequestError(
+          'No se puede expulsar a este participante porque tiene liquidaciones registradas en el historial. Deshaz los pagos en la pestaña de liquidaciones primero.'
+        )
+      );
+    }
+
+    // 5. Eliminar del array de miembros
     project.members = project.members.filter((m) => m.toString() !== memberId);
     await project.save();
 
-    // 5. Devolvemos el proyecto poblado
+    // 6. Devolvemos el proyecto poblado
     const updatedProject = await Project.findById(projectId)
       .populate('owner', 'name email')
       .populate('members', 'name email');
 
     res.json({
+      status: 'success',
       message: '✅ Miembro eliminado con éxito',
-      project: updatedProject,
+      data: { project: updatedProject },
     });
   } catch (error) {
     next(error);
