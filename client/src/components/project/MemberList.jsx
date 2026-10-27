@@ -8,12 +8,12 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMsg, setInviteMsg] = useState({ text: '', type: '' });
 
-  // Estado del modal de confirmación destructiva
+  // Estado del modal de confirmación
   const [targetMember, setTargetMember] = useState(null);
   const [projectNameConfirmation, setProjectNameConfirmation] = useState('');
   const [isRemoving, setIsRemoving] = useState(false);
 
-  // Extracción robusta de IDs y emails
+  // Extracción de identificadores
   const currentUserId = String(
     currentUser?._id || currentUser?.id || currentUser?.user?._id || currentUser?.user?.id || extractEntityId(currentUser) || ''
   );
@@ -28,13 +28,11 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
     project?.owner?.email || ''
   ).toLowerCase().trim();
 
-  // Es owner si coincide el ID o el email
   const isOwner = Boolean(
     (currentUserId && ownerId && currentUserId === ownerId) ||
     (currentUserEmail && ownerEmail && currentUserEmail === ownerEmail)
   );
 
-  // Validación de confirmación insensible a mayúsculas/minúsculas y espacios
   const projectName = project?.name || project?.title || '';
   const isConfirmationMatching =
     projectNameConfirmation.trim().toLowerCase() === projectName.trim().toLowerCase();
@@ -168,9 +166,14 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
             (ownerId && memberId && ownerId === memberId) ||
             (ownerEmail && memberEmail && ownerEmail === memberEmail)
           );
+
+          const isCurrent = Boolean(
+            (currentUserId && memberId && currentUserId === memberId) ||
+            (currentUserEmail && memberEmail && currentUserEmail === memberEmail)
+          );
           
-          const memberName = m?.name || (memberEmail ? memberEmail.split('@')[0] : `Usuario (${memberId.slice(-4)})`);
-          const canDeleteThisMember = isOwner && !isMemberOwner;
+          const baseName = m?.name || (memberEmail ? memberEmail.split('@')[0] : `Usuario (${memberId.slice(-4)})`);
+          const canDeleteThisMember = isOwner && !isMemberOwner && !isCurrent;
 
           return (
             <div
@@ -179,10 +182,17 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-7 h-7 rounded-full bg-indigo-950 border border-indigo-700/60 flex items-center justify-center font-bold text-indigo-300 text-[11px] shrink-0">
-                  {memberName ? memberName.charAt(0).toUpperCase() : '?'}
+                  {baseName ? baseName.charAt(0).toUpperCase() : '?'}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-medium text-white truncate">{memberName}</p>
+                  <p className="font-medium text-white truncate flex items-center gap-1.5">
+                    <span>{baseName}</span>
+                    {isCurrent && (
+                      <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700">
+                        Tú
+                      </span>
+                    )}
+                  </p>
                   <p className="text-[11px] text-slate-500 truncate">{m?.email || 'Sin correo'}</p>
                 </div>
               </div>
@@ -226,7 +236,7 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
               <strong className="text-white font-semibold">
                 {targetMember.name || targetMember.email}
               </strong>{' '}
-              del proyecto.
+              del proyecto. Mejor Deshaz los pagos en la pestaña de liquidaciones primero.
             </p>
 
             <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1">
