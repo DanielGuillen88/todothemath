@@ -1,5 +1,6 @@
 import { Input, Select } from '../ui';
 import { extractEntityId } from '../../utils/expenseHelpers';
+import { EXPENSE_CATEGORIES } from '../../constants/categories';
 
 export default function ExpenseFields({
   values,
@@ -15,10 +16,39 @@ export default function ExpenseFields({
 
   const handleSharedCheckboxChange = (e) => {
     const willBeShared = e.target.checked;
-    // Si se marca como compartido -> isPersonal: false
-    // Si se desmarca -> isPersonal: true
     onChange('isPersonal', !willBeShared);
+
+    if (!willBeShared && values.category !== 'Personales') {
+      onChange('category', 'Personales');
+    } else if (willBeShared && values.category === 'Personales') {
+      onChange('category', 'Otros');
+    }
   };
+
+  // Manejo tolerante: soporta eventos estándar (e.target.value) y llamadas directas (value)
+  const handleCategoryChange = (eOrValue) => {
+    const newCategory = (eOrValue && typeof eOrValue === 'object' && eOrValue.target)
+      ? eOrValue.target.value
+      : eOrValue;
+
+    onChange('category', newCategory);
+
+    if (newCategory === 'Personales' && isShared) {
+      onChange('isPersonal', true);
+    } else if (newCategory !== 'Personales' && values.isPersonal) {
+      onChange('isPersonal', false);
+    }
+  };
+
+  const numericAmount = Number(values.amount) || 0;
+  const count = selectedMembers.length || 1;
+  const perPersonShare = (numericAmount / count).toFixed(2);
+
+  // Formato dual: objetos { value, label } por si el Select interno los requiere, o array plano
+  const selectOptions = EXPENSE_CATEGORIES.map((cat) => ({
+    value: cat,
+    label: cat,
+  }));
 
   return (
     <>
@@ -29,7 +59,7 @@ export default function ExpenseFields({
             label="Concepto"
             type="text"
             disabled={disabled}
-            value={values.title}
+            value={values.title || ''}
             onChange={(e) => onChange('title', e.target.value)}
             placeholder="Cena, Peajes, Entradas..."
           />
@@ -43,7 +73,7 @@ export default function ExpenseFields({
             step="any"
             min="0.01"
             disabled={disabled}
-            value={values.amount}
+            value={values.amount !== undefined ? values.amount : ''}
             onChange={(e) => onChange('amount', e.target.value)}
             placeholder="0.00"
           />
@@ -55,7 +85,7 @@ export default function ExpenseFields({
             label="Fecha"
             type="date"
             disabled={disabled}
-            value={values.date}
+            value={values.date || ''}
             onChange={(e) => onChange('date', e.target.value)}
           />
         </div>
@@ -65,20 +95,13 @@ export default function ExpenseFields({
             id="expense-category"
             label="Categoría"
             disabled={disabled}
-            value={values.category}
-            onChange={(e) => onChange('category', e.target.value)}
-          >
-            <option value="Otros">Otros</option>
-            <option value="Ocio">Ocio</option>
-            <option value="Comida">Comida</option>
-            <option value="Transporte">Transporte</option>
-            <option value="Alojamiento">Alojamiento</option>
-            <option value="Supermercado">Supermercado</option>
-            <option value="Personales">Personales</option>
-          </Select>
+            value={values.category || 'Otros'}
+            onChange={handleCategoryChange}
+            options={selectOptions}
+          />
         </div>
 
-        {/* Checkbox invertido: desmarcado = personal, marcado = compartido */}
+        {/* Checkbox compartido / personal */}
         <div className="sm:col-span-3 pt-2">
           <label className="inline-flex items-center gap-2.5 cursor-pointer text-xs text-slate-300 font-medium select-none">
             <input
@@ -98,15 +121,13 @@ export default function ExpenseFields({
         </div>
       </div>
 
-      {/* Selector de reparto: SOLO visible cuando está marcado como compartido */}
+      {/* Selector de reparto entre miembros */}
       {showSplitSelector && isShared && project?.members && project.members.length > 1 && (
         <div className="mt-3.5 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-400">Dividir gasto entre:</span>
             <span className="text-[11px] font-semibold text-indigo-400">
-              {selectedMembers.length} seleccionados (
-              {Number(values.amount ? (Number(values.amount) / (selectedMembers.length || 1)).toFixed(2) : 0)}{' '}
-              {project?.currency || '€'}/persona)
+              {selectedMembers.length} seleccionados ({perPersonShare} {project?.currency || '€'}/persona)
             </span>
           </div>
 
@@ -130,7 +151,7 @@ export default function ExpenseFields({
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${isIncluded ? 'bg-indigo-400' : 'bg-slate-600'}`}></span>
-                  <span>{memberName} {isCurrent ? '(Tú)' : ''}</span>
+                  <span>{isCurrent ? 'Tú' : memberName}</span>
                 </button>
               );
             })}
