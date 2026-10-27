@@ -1,21 +1,29 @@
 import express from 'express';
-import { createProject, getProjects, getProjectById, updateProject, deleteProject, addMemberToProject } from '../controllers/projectController/index.js';
-import { protect } from '../middlewares/auth.js';
-import expenseRouter from './expenseRoutes.js';
+import { 
+  createProject, 
+  getProjects, 
+  getProjectById, 
+  updateProject, 
+  deleteProject, 
+  addMemberToProject 
+} from '../controllers/projectController/index.js';
 import { removeMember } from '../controllers/projectController/removeMember.js';
+import { protect } from '../middlewares/auth.js';
+
+// Subrutas anidadas
+import expenseRouter from './expenseRoutes.js';
+import settlementRouter from './settlementRoutes.js';
 
 const router = express.Router();
 
-// requiere estar logueado para acceder a las rutas de proyectos
+// Todas las rutas de proyectos requieren sesión activa
 router.use(protect);
 
-// 2. REENVIAR /:projectId/expenses al router de gastos
-// Esto permite que /api/projects/:id/expenses y /api/projects/:id/expenses/balances funcionen
+// 1. Reenvío anidado de sub-recursos heredando :projectId
 router.use('/:projectId/expenses', expenseRouter);
-// Por si en algún sitio se nombró :id en lugar de :projectId:
-router.use('/:id/expenses', expenseRouter);
+router.use('/:projectId/settlements', settlementRouter);
 
-// Rutas base de proyectos
+// 2. Rutas base de proyectos
 router
   .route('/')
   .get(getProjects)
@@ -27,6 +35,7 @@ router
   .put(updateProject)
   .delete(deleteProject);
 
+// 3. Gestión de miembros
 router.post('/:id/members', addMemberToProject);
 router.delete('/:id/members/:memberId', removeMember);
 
