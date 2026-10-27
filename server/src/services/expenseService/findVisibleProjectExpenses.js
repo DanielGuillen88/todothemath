@@ -10,17 +10,15 @@ import { Expense } from '../../models/Expense.js';
  * @returns {Promise<Array>}
  */
 export const findVisibleProjectExpenses = async (projectId, userId) => {
-  const filter = {
+  return await Expense.find({
     project: projectId,
+    isSettlement: { $ne: true }, // Excluye liquidaciones antiguas si quedaron en BD
     $or: [
-      { isPersonal: false },
-      { isPersonal: { $exists: false } },
-      { isPersonal: true, paidBy: userId }
-    ]
-  };
-
-  return await Expense.find(filter)
+      { isPersonal: false },                // Gastos compartidos: visibles para todos
+      { isPersonal: true, paidBy: userId }, // Gastos personales: solo para quien lo pagó
+    ],
+  })
+    .sort({ date: -1, createdAt: -1 })
     .populate('paidBy', 'name email')
-    .populate('splitBetween.user', 'name email')
-    .sort({ date: -1, createdAt: -1 });
+    .populate('splitBetween.user', 'name email');
 };

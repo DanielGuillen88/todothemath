@@ -1,38 +1,41 @@
 /**
- * Calcula balances y liquidaciones según el modo elegido:
- * - 'simplified' (Greedy): Minimiza transferencias globales entre todos.
- * - 'direct' (P2P / Convencional): Deudas directas únicamente entre quien consume y quien pagó.
+ * Motor P2P estricto: Deuda bilateral transparente entre quien consume y quien pagó,
+ * descontando los pagos directos registrados en Settlement.
  */
-export const calculateBalances = (expenses = [], members = [], mode = 'direct') => {
+export const calculateBalances = (expenses = [], settlementsList = [], members = []) => {
   const balanceMap = new Map();
   const memberNames = new Map();
 
-  // 1. Inicializar miembros y mapa de nombres
+  // 1. Inicializar miembros
   members.forEach((m) => {
     if (!m) return;
     const id = String(m._id || m.id || m);
     const name = m.name || m.email || `Usuario (${id.slice(-4)})`;
-    balanceMap.set(id, { id, name, paid: 0, owes: 0, net: 0 });
+    balanceMap.set(id, { 
+      id, 
+      name, 
+      paid: 0, 
+      owes: 0, 
+      settledPaid: 0, 
+      settledReceived: 0, 
+      net: 0 
+    });
     memberNames.set(id, name);
   });
 
-  // Matriz de deuda directa: directDebts[deudor][acreedor] = total
+  // Mapa de deudas directas: directDebts[deudor][acreedor] = suma acumulada
   const directDebts = new Map();
 
-  const addDirectDebt = (debtorId, creditorId, amount) => {
-    if (!debtorId || !creditorId || debtorId === creditorId || amount <= 0) return;
-    if (!directDebts.has(debtorId)) {
-      directDebts.set(debtorId, new Map());
-    }
-    const debtorMap = directDebts.get(debtorId);
-    const current = debtorMap.get(creditorId) || 0;
-    debtorMap.set(creditorId, current + amount);
+  const addDebt = (debtorId, creditorId, amount) => {
+    if (!debtorId || !creditorId || debtorId === creditorId || amount === 0) return;
+    if (!directDebts.has(debtorId)) directDebts.set(debtorId, new Map());
+    const m = directDebts.get(debtorId);
+    m.set(creditorId, (m.get(creditorId) || 0) + amount);
   };
 
-  // 2. Procesar cada gasto
+  // 2. Procesar compras ordinarias
   expenses.forEach((exp) => {
-    if (!exp || exp.isPersonal) return;
-
+    if (!exp || exp.isPersonal || exp.isSettlement) return;
     const amount = Number(exp.amount || 0);
     if (amount <= 0) return;
 
@@ -41,129 +44,98 @@ export const calculateBalances = (expenses = [], members = [], mode = 'direct') 
       balanceMap.get(payerId).paid += amount;
     }
 
-    // Si es un registro de liquidación (reembolso directo de A a B)
-    if (exp.isSettlement) {
-      const recipientSplit = Array.isArray(exp.splitBetween) && exp.splitBetween[0];
-      const recipientId = String(recipientSplit?.user?._id || recipientSplit?.user?.id || recipientSplit?.user || '');
-      
-      if (recipientId && balanceMap.has(recipientId)) {
-        balanceMap.get(recipientId).owes += amount;
-      }
-      // En modo directo, el reembolso resta la deuda del pagador hacia el receptor
-      if (payerId && recipientId) {
-        addDirectDebt(payerId, recipientId, -amount);
-      }
-      return;
-    }
-
-    // Gasto compartido regular
+    // Reparto explícito: solo asumen deuda quienes figuran en splitBetween
     if (Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0) {
       exp.splitBetween.forEach((split) => {
         if (!split) return;
         const userId = String(split.user?._id || split.user?.id || split.user || '');
-        const share = Number(split.share) || (amount / exp.splitBetween.length);
+
+        const share = split.share !== undefined && split.share !== null && !isNaN(Number(split.share))
+          ? Number(split.share)
+          : Number((amount / exp.splitBetween.length).toFixed(2));
 
         if (userId && balanceMap.has(userId)) {
           balanceMap.get(userId).owes += share;
           if (payerId && userId !== payerId) {
-            addDirectDebt(userId, payerId, share);
+            addDebt(userId, payerId, share);
           }
         }
       });
     } else if (members.length > 0) {
-      const equalShare = amount / members.length;
+      // Fallback de compatibilidad: reparto equitativo si no hubo selección previa
+      const equalShare = Number((amount / members.length).toFixed(2));
       members.forEach((m) => {
         const id = String(m._id || m.id || m);
         if (balanceMap.has(id)) {
           balanceMap.get(id).owes += equalShare;
           if (payerId && id !== payerId) {
-            addDirectDebt(id, payerId, equalShare);
+            addDebt(id, payerId, equalShare);
           }
         }
       });
     }
   });
 
-  // 3. Balances netos individuales
-  const balances = [];
-  const debtors = [];
-  const creditors = [];
+  // 3. Aplicar liquidaciones registradas (Settlement)
+  settlementsList.forEach((st) => {
+    const fromId = String(st.from?._id || st.from?.id || st.from || '');
+    const toId = String(st.to?._id || st.to?.id || st.to || '');
+    const amount = Number(st.amount || 0);
 
-  balanceMap.forEach((entry) => {
-    const net = Number((entry.paid - entry.owes).toFixed(2));
-    entry.net = net;
-    entry.paid = Number(entry.paid.toFixed(2));
-    entry.owes = Number(entry.owes.toFixed(2));
-    balances.push(entry);
+    if (fromId && toId && amount > 0) {
+      addDebt(fromId, toId, -amount);
 
-    if (net < -0.01) debtors.push({ ...entry, amount: Math.abs(net) });
-    else if (net > 0.01) creditors.push({ ...entry, amount: net });
+      if (balanceMap.has(fromId)) balanceMap.get(fromId).settledPaid += amount;
+      if (balanceMap.has(toId)) balanceMap.get(toId).settledReceived += amount;
+    }
   });
 
-  // 4. MODO DIRECTO (Peer-to-Peer bilateral)
-  if (mode === 'direct') {
-    const settlements = [];
-    const allMemberIds = Array.from(balanceMap.keys());
+  // 4. Balances netos individuales
+  const balances = [];
+  balanceMap.forEach((entry) => {
+    const effectivePaid = entry.paid + entry.settledPaid;
+    const effectiveOwed = entry.owes + entry.settledReceived;
 
-    for (let i = 0; i < allMemberIds.length; i++) {
-      for (let j = i + 1; j < allMemberIds.length; j++) {
-        const userA = allMemberIds[i];
-        const userB = allMemberIds[j];
+    entry.net = Number((effectivePaid - effectiveOwed).toFixed(2));
+    entry.paid = Number(entry.paid.toFixed(2));
+    entry.owes = Number(entry.owes.toFixed(2));
+    entry.settledPaid = Number(entry.settledPaid.toFixed(2));
+    entry.settledReceived = Number(entry.settledReceived.toFixed(2));
 
-        const aOwesB = directDebts.get(userA)?.get(userB) || 0;
-        const bOwesA = directDebts.get(userB)?.get(userA) || 0;
+    balances.push(entry);
+  });
 
-        const diff = Number((aOwesB - bOwesA).toFixed(2));
+  // 5. Liquidaciones pendientes bilaterales P2P
+  const settlements = [];
+  const memberIds = Array.from(balanceMap.keys());
 
-        if (diff > 0.01) {
-          settlements.push({
-            from: memberNames.get(userA),
-            fromId: userA,
-            to: memberNames.get(userB),
-            toId: userB,
-            amount: diff,
-          });
-        } else if (diff < -0.01) {
-          settlements.push({
-            from: memberNames.get(userB),
-            fromId: userB,
-            to: memberNames.get(userA),
-            toId: userA,
-            amount: Math.abs(diff),
-          });
-        }
+  for (let i = 0; i < memberIds.length; i++) {
+    for (let j = i + 1; j < memberIds.length; j++) {
+      const uA = memberIds[i];
+      const uB = memberIds[j];
+
+      const aOwesB = directDebts.get(uA)?.get(uB) || 0;
+      const bOwesA = directDebts.get(uB)?.get(uA) || 0;
+      const diff = Number((aOwesB - bOwesA).toFixed(2));
+
+      if (diff > 0.01) {
+        settlements.push({
+          from: memberNames.get(uA),
+          fromId: uA,
+          to: memberNames.get(uB),
+          toId: uB,
+          amount: diff,
+        });
+      } else if (diff < -0.01) {
+        settlements.push({
+          from: memberNames.get(uB),
+          fromId: uB,
+          to: memberNames.get(uA),
+          toId: uA,
+          amount: Math.abs(diff),
+        });
       }
     }
-
-    return { balances, settlements };
-  }
-
-  // 5. MODO SIMPLIFICADO (Algoritmo Greedy)
-  const settlements = [];
-  let dIdx = 0;
-  let cIdx = 0;
-
-  while (dIdx < debtors.length && cIdx < creditors.length) {
-    const debtor = debtors[dIdx];
-    const creditor = creditors[cIdx];
-
-    const settleAmount = Number(Math.min(debtor.amount, creditor.amount).toFixed(2));
-
-    if (settleAmount > 0) {
-      settlements.push({
-        from: debtor.name,
-        fromId: debtor.id,
-        to: creditor.name,
-        toId: creditor.id,
-        amount: settleAmount,
-      });
-
-      debtor.amount = Number((debtor.amount - settleAmount).toFixed(2));
-      creditor.amount = Number((creditor.amount - settleAmount).toFixed(2));
-    }
-
-    if (debtor.amount <= 0.01) dIdx++;
-    if (creditor.amount <= 0.01) cIdx++;
   }
 
   return { balances, settlements };
