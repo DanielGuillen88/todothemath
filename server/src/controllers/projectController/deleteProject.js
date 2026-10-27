@@ -1,6 +1,7 @@
 import { Project } from '../../models/Project.js';
-import { isProjectOwner, deleteProjectCascade } from '../../services/projectService/index.js';
-import { ERROR_MESSAGES, NotFoundError, ForbiddenError } from '../../utils/errors/index.js';
+import { ERROR_MESSAGES, NotFoundError, ForbiddenError, BadRequestError  } from '../../utils/errors/index.js';
+import { Expense } from '../../models/Expense.js';
+import { Settlement } from '../../models/Settlement.js';
 
 // @desc    Eliminar un proyecto y sus gastos asociados
 // @route   DELETE /api/projects/:id
@@ -10,27 +11,24 @@ export const deleteProject = async (req, res, next) => {
     const { id } = req.params;
     const { projectName } = req.body;
     const project = await Project.findById(id);
+    if (!project) return next(new NotFoundError(ERROR_MESSAGES.PROJECT.NOT_FOUND));
 
-    if (!project) {
-      return next(new NotFoundError(ERROR_MESSAGES.PROJECT.NOT_FOUND));
-    }
-
-    if (!isProjectOwner(project, req.user._id)) {
+    if (String(project.owner) !== String(req.user._id)) {
       return next(new ForbiddenError(ERROR_MESSAGES.PROJECT.FORBIDDEN_DELETE));
     }
 
     // 🔒 Validación estricta del nombre (insensible a mayúsculas/minúsculas y espacios)
-    const storedName = (project.name || project.title || '').trim().toLowerCase();
-    const providedName = (projectName || '').trim().toLowerCase();
-
-    if (!providedName || providedName !== storedName) {
-      return next(
-        new BadRequestError(new Error(ERROR_MESSAGES.PROJECT.NOT_MATCHING_NAME))
-      );
+    const currentName = project.title || project.name || '';
+    if (projectName?.trim().toLowerCase() !== currentName.trim().toLowerCase()) {
+      return next(new BadRequestError(ERROR_MESSAGES.PROJECT.NOT_MATCHING_NAME));
     }
 
     // Eliminación en cascada de proyecto y gastos asociados
-    await deleteProjectCascade(project);
+    await Promise.all([
+      Expense.deleteMany({ project: id }),
+      Settlement.deleteMany({ project: id }),
+      Project.findByIdAndDelete(id),
+    ]);
 
     res.status(200).json({
       status: 'success',

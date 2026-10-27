@@ -1,6 +1,6 @@
 import { Project } from '../../models/Project.js';
-import { isProjectOwner } from '../../services/projectService/index.js';
-import { ERROR_MESSAGES, BadRequestError, NotFoundError, ForbiddenError } from '../../utils/errors/index.js';
+import { hasProjectAccess } from '../../services/projectService/index.js';
+import { NotFoundError, ForbiddenError, BadRequestError, ERROR_MESSAGES } from '../../utils/errors/index.js';
 
 // @desc    Actualizar información del proyecto
 // @route   PUT /api/projects/:id
@@ -8,26 +8,29 @@ import { ERROR_MESSAGES, BadRequestError, NotFoundError, ForbiddenError } from '
 export const updateProject = async (req, res, next) => {
   try {
     const { id } = req.params;
-    if (!id || id === 'undefined') {
-      return next(new BadRequestError(ERROR_MESSAGES.PROJECT.INVALID_ID));
-    }
+    const { title, description, budget, currency, type } = req.body;
 
     const project = await Project.findById(id);
     if (!project) {
       return next(new NotFoundError(ERROR_MESSAGES.PROJECT.NOT_FOUND));
     }
 
-    if (!isProjectOwner(project, req.user._id)) {
-      return next(new ForbiddenError(ERROR_MESSAGES.PROJECT.FORBIDDEN_EDIT));
+    if (!hasProjectAccess(project, req.user._id)) {
+      return next(new ForbiddenError(ERROR_MESSAGES.PROJECT.FORBIDDEN_ACCESS));
     }
 
-    const { title, description, budget, currency, type, settlementMode } = req.body;
-    if (title) project.title = title.trim();
-    if (description !== undefined) project.description = description;
-    if (budget !== undefined) project.budget = Number(budget) || 0;
-    if (currency) project.currency = currency;
-    if (type) project.type = type;
-    if (settlementMode) project.settlementMode = settlementMode; // 👈 Permitir cambiar de 'direct' a 'simplified'
+    // Campos permitidos
+    if (title !== undefined) {
+      if (!title.trim()) {
+        return next(new BadRequestError(ERROR_MESSAGES.PROJECT.TITLE_REQUIRED));
+      }
+      project.title = title.trim();
+    }
+
+    if (description !== undefined) project.description = description.trim();
+    if (budget !== undefined) project.budget = budget !== '' ? Number(budget) : 0;
+    if (currency !== undefined) project.currency = currency;
+    if (type !== undefined) project.type = type;
 
     await project.save();
 

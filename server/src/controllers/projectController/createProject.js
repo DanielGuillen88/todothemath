@@ -6,26 +6,29 @@ import { ERROR_MESSAGES, BadRequestError } from '../../utils/errors/index.js';
 // @access  Private
 export const createProject = async (req, res, next) => {
   try {
-    const { title, description, type, budget, currency, settlementMode } = req.body;
+    const { title, description, budget, currency, type } = req.body;
 
     if (!title || !title.trim()) {
-      return next(new BadRequestError(ERROR_MESSAGES.PROJECT_TITLE_REQUIRED));
+      return next(new BadRequestError(ERROR_MESSAGES.PROJECT.TITLE_REQUIRED));
     }
 
     const project = await Project.create({
       title: title.trim(),
-      description: description || '',
-      type: type || 'trip',
-      budget: Number(budget) || 0,
+      description: description ? description.trim() : '',
+      budget: budget !== undefined && budget !== '' ? Number(budget) : 0,
       currency: currency || 'EUR',
-      settlementMode: settlementMode || 'direct', // 👈 'direct' por defecto para deudas 1 a 1
+      type: type || 'trip',
       owner: req.user._id,
       members: [req.user._id], // El creador entra automáticamente como participante
     });
 
+    const populatedProject = await Project.findById(project._id)
+      .populate('owner', 'name email')
+      .populate('members', 'name email');
+
     res.status(201).json({
       status: 'success',
-      data: { project },
+      data: { project: populatedProject },
     });
   } catch (error) {
     next(error);
