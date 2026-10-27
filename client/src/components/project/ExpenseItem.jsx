@@ -1,10 +1,9 @@
-import { useState } from 'react';
-import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2, Users } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
 import { Button } from '../ui';
 import {
   extractEntityId,
-  calculateDynamicShare,
   formatTimeHHMM,
 } from '../../utils/expenseHelpers';
 
@@ -13,6 +12,7 @@ export default function ExpenseItem({
   project,
   currentUser,
   isMe,
+  getMyShareForExpense,
   onUpdate,
   onDelete,
   groupBy,
@@ -23,15 +23,38 @@ export default function ExpenseItem({
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionFeedback, setActionFeedback] = useState(null);
 
+  // Estado para el popover de desglose de miembros
+  const [showSplitPopover, setShowSplitPopover] = useState(false);
+  const splitPopoverRef = useRef(null);
+
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [editForm, setEditForm] = useState({
     title: '',
     amount: '',
     category: 'General',
     date: '',
-    isPersonal: true,
+    isPersonal: false,
     paidBy: '',
   });
+
+  const currency = project?.currency || '€';
+  const totalAmount = Number(expense?.amount || 0);
+
+  // Cerrar el popover al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (splitPopoverRef.current && !splitPopoverRef.current.contains(e.target)) {
+        setShowSplitPopover(false);
+      }
+    };
+
+    if (showSplitPopover) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSplitPopover]);
 
   const handleFieldChange = (field, value) => {
     setEditForm((prev) => ({ ...prev, [field]: value }));
@@ -41,7 +64,7 @@ export default function ExpenseItem({
     setSelectedMembers((prev) => {
       const cleanId = extractEntityId(memberId);
       if (prev.includes(cleanId)) {
-        if (prev.length === 1) return prev; // Evita dejar el reparto sin ningún participante
+        if (prev.length === 1) return prev;
         return prev.filter((id) => id !== cleanId);
       }
       return [...prev, cleanId];
@@ -52,11 +75,11 @@ export default function ExpenseItem({
     setIsConfirmingDelete(false);
     setIsConfirmingSave(false);
     setActionFeedback(null);
+    setShowSplitPopover(false);
 
     const existingPayerId = extractEntityId(expense.paidBy);
     const currentId = extractEntityId(currentUser);
 
-    // Mapea los participantes actuales en el split, o todos los miembros del proyecto si no existía
     const currentSplitMembers = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
       ? expense.splitBetween.map((s) => extractEntityId(s.user || s))
       : (project?.members || []).map((m) => extractEntityId(m));
@@ -88,26 +111,32 @@ export default function ExpenseItem({
 
     const payerIdToSend = extractEntityId(editForm.paidBy);
 
-    // Construye el split recalculado con base en los miembros seleccionados
     let updatedSplit = [];
     if (!editForm.isPersonal && selectedMembers.length > 0) {
-      const sharePerPerson = Number((numericAmount / selectedMembers.length).toFixed(2));
-      updatedSplit = selectedMembers.map((memberId) => ({
-        user: extractEntityId(memberId),
-        share: sharePerPerson,
-      }));
+      const totalCents = Math.round(numericAmount * 100);
+      const baseCents = Math.floor(totalCents / selectedMembers.length);
+      let remainderCents = totalCents % selectedMembers.length;
+
+      updatedSplit = selectedMembers.map((memberId) => {
+        const shareCents = baseCents + (remainderCents > 0 ? 1 : 0);
+        if (remainderCents > 0) remainderCents -= 1;
+        return {
+          user: extractEntityId(memberId),
+          share: Number((shareCents / 100).toFixed(2)),
+        };
+      });
     }
 
     setIsProcessing(true);
     try {
       await onUpdate(expense._id, {
         title: editForm.title.trim(),
-        amount: numericAmount,
+        amount: Number(numericAmount.toFixed(2)),
         category: editForm.category,
-        date: new Date(editForm.date).toISOString(),
-        isPersonal: editForm.isPersonal,
+        date: editForm.date ? new Date(editForm.date).toISOString() : new Date().toISOString(),
+        isPersonal: Boolean(editForm.isPersonal),
         paidBy: payerIdToSend,
-        splitBetween: editForm.isPersonal ? undefined : updatedSplit,
+        splitBetween: editForm.isPersonal ? [] : updatedSplit,
       });
 
       setActionFeedback({ type: 'success', text: 'Gasto actualizado correctamente' });
@@ -116,7 +145,7 @@ export default function ExpenseItem({
       setTimeout(() => {
         setIsEditing(false);
         setActionFeedback(null);
-      }, 900);
+      }, 800);
     } catch (err) {
       setActionFeedback({
         type: 'error',
@@ -146,7 +175,7 @@ export default function ExpenseItem({
     }
   };
 
-  if (actionFeedback?.type === 'success') {
+  if (actionFeedback?.type === 'success' && !isEditing) {
     return (
       <div className="py-3 px-4 my-1.5 bg-emerald-950/40 border border-emerald-800/60 rounded-xl flex items-center justify-center gap-2 text-emerald-300 text-xs font-medium animate-pulse">
         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -155,9 +184,27 @@ export default function ExpenseItem({
     );
   }
 
-  const computedShare = calculateDynamicShare(expense, project?.members, isMe);
-  const paidByMe = isMe(expense.paidBy);
+  const payerId = extractEntityId(expense.paidBy);
+  const paidByMe = isMe ? isMe(expense.paidBy, payerId) : false;
   const payerName = paidByMe ? 'Mí' : (expense.paidBy?.name || 'Otro miembro');
+
+  let computedShare = 0;
+  if (!expense.isPersonal) {
+    if (typeof getMyShareForExpense === 'function') {
+      computedShare = getMyShareForExpense(expense);
+    }
+    
+    if (computedShare === 0 && Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0) {
+      const currentUserId = extractEntityId(currentUser);
+      const mySplit = expense.splitBetween.find((s) => {
+        const splitUserId = extractEntityId(s.user || s);
+        return splitUserId && currentUserId && splitUserId === currentUserId;
+      });
+      if (mySplit) {
+        computedShare = Number(mySplit.share || 0);
+      }
+    }
+  }
 
   if (isEditing) {
     return (
@@ -175,7 +222,7 @@ export default function ExpenseItem({
           project={project}
           currentUser={currentUser}
           disabled={isProcessing}
-          showSplitSelector={true}
+          showSplitSelector={!editForm.isPersonal}
           selectedMembers={selectedMembers}
           onToggleMember={toggleMemberSplit}
         />
@@ -249,17 +296,10 @@ export default function ExpenseItem({
               <span>•</span>
             </>
           )}
-          {/* <span>
-            💰 por <span className="text-slate-200 font-medium">{payerName}</span>
-          </span>
-          <span>
-            a las <span className="text-slate-200 font-medium">{formatTimeHHMM(expense.createdAt || expense.date)}</span>
-          </span> */}
           <span>
             💰 por <span className="text-slate-200 font-medium">{payerName}</span>
           </span>
 
-          {/* Si está agrupado por categoría o sin agrupar, mostramos el día */}
           {groupBy !== 'date' && groupBy !== 'both' && (
             <span>
               el <span className="text-slate-200 font-medium">
@@ -268,14 +308,73 @@ export default function ExpenseItem({
             </span>
           )}
 
-          {/* Mostramos la hora si está disponible */}
           <span>
             a las <span className="text-slate-200 font-medium">{formatTimeHHMM(expense.createdAt || expense.date)}</span>
           </span>
+
+          {/* Botón interactivo con popover de desglose */}
           {!expense.isPersonal && expense.splitBetween?.length > 0 && (
-            <span className="text-indigo-300/80 font-medium">
-              (➗ {expense.splitBetween.length})
-            </span>
+            <div className="relative inline-block" ref={splitPopoverRef}>
+              <button
+                type="button"
+                onClick={() => setShowSplitPopover((prev) => !prev)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 border border-indigo-700/50 text-indigo-300 font-medium text-[11px] hover:bg-indigo-900/80 hover:text-indigo-200 transition-colors cursor-pointer"
+                title="Ver participantes de este gasto"
+              >
+                <span>➗ {expense.splitBetween.length}</span>
+              </button>
+
+              {showSplitPopover && (
+                <div className="absolute left-0 bottom-full mb-1.5 z-40 w-56 rounded-xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 p-2.5 shadow-2xl space-y-1.5 animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 text-[11px] font-semibold text-slate-300">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-indigo-400" />
+                      Repartido entre:
+                    </span>
+                    <span className="text-slate-400 font-mono text-[10px]">
+                      {expense.splitBetween.length} pers.
+                    </span>
+                  </div>
+
+                  <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
+                    {expense.splitBetween.map((splitItem, idx) => {
+                      const memberId = extractEntityId(splitItem.user || splitItem);
+                      const memberIsCurrent = isMe ? isMe(splitItem.user, memberId) : false;
+
+                      // Nombres de miembros que entran en reparto
+                      let memberName = splitItem.user?.name || splitItem.user?.email;
+                      if (!memberName && project?.members) {
+                        const found = project.members.find(
+                          (m) => extractEntityId(m) === memberId
+                        );
+                        if (found) memberName = found.name || found.email;
+                      }
+                      if (!memberName) memberName = `Usuario (${memberId.slice(-4)})`;
+
+                      const itemShare = Number(
+                        splitItem.share ?? (totalAmount / expense.splitBetween.length)
+                      );
+
+                      return (
+                        <div
+                          key={`split-detail-${memberId}-${idx}`}
+                          className={`flex items-center justify-between text-xs py-1 px-1.5 rounded-md ${
+                            memberIsCurrent ? 'bg-indigo-950/70 border border-indigo-800/60' : 'bg-slate-950/40'
+                          }`}
+                        >
+                          <span className={`truncate mr-2 ${memberIsCurrent ? 'font-semibold text-indigo-300' : 'text-slate-300'}`}>
+                            {memberIsCurrent ? 'Tú' : memberName}
+                          </span>
+                          <span className="font-mono text-[11px] font-medium text-emerald-400 shrink-0">
+                            {itemShare.toFixed(2)} {currency}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -327,19 +426,22 @@ export default function ExpenseItem({
           </div>
         )}
 
-        <div className="text-right flex flex-col items-end min-w-[85px]">
-          {!expense.isPersonal && (
-            <div className="flex items-center gap-1 text-xs mt-0.5">
-              <span className="font-semibold text-emerald-400">
-                {computedShare.toFixed(2)} {project?.currency || '€'}
-              </span>
-            </div>
-          )}
-          <div className="flex items-center gap-1.5">
-            <span className={`text-xs font-bold ${expense.isPersonal ? 'text-emerald-400' : 'text-white'}`}>
-              {Number(expense.amount || 0).toFixed(2)} {project?.currency || '€'}
+        {/* Zona de importe limpia */}
+        <div className="text-right flex flex-col items-end justify-center min-w-[75px]">
+          {expense.isPersonal ? (
+            <span className="text-sm font-bold text-amber-400">
+              {totalAmount.toFixed(2)} {currency}
             </span>
-          </div>
+          ) : (
+            <>
+              <span className="text-sm font-bold text-emerald-400">
+                {computedShare.toFixed(2)} {currency}
+              </span>
+              <span className="text-[11px] font-medium text-slate-400">
+                {totalAmount.toFixed(2)} {currency}
+              </span>
+            </>
+          )}
         </div>
       </div>
     </div>
