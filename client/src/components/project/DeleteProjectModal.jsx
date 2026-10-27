@@ -20,7 +20,8 @@ export default function DeleteProjectModal({ project, isOpen, onClose, onSuccess
     onClose();
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (e) => {
+    if (e) e.preventDefault();
     if (!isMatch || isDeleting) return;
 
     setIsDeleting(true);
@@ -62,38 +63,44 @@ export default function DeleteProjectModal({ project, isOpen, onClose, onSuccess
           </span>
         </div>
 
-        <Input
-          type="text"
-          autoFocus
-          placeholder="Nombre del proyecto..."
-          value={confirmationName}
-          onChange={(e) => setConfirmationName(e.target.value)}
-          disabled={isDeleting}
-        />
-
-        {errorMsg && (
-          <p className="text-xs text-red-400 font-medium">{errorMsg}</p>
-        )}
-
-        <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-800">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleClose}
+        <form onSubmit={handleDelete} className="space-y-4">
+          <Input
+            type="text"
+            autoFocus
+            placeholder="Nombre del proyecto..."
+            value={confirmationName}
+            onChange={(e) => {
+              setConfirmationName(e.target.value);
+              if (errorMsg) setErrorMsg('');
+            }}
             disabled={isDeleting}
-          >
-            Cancelar
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={!isMatch || isDeleting}
-            isLoading={isDeleting}
-            onClick={handleDelete}
-          >
-            Eliminar definitivamente
-          </Button>
-        </div>
+          />
+
+          {errorMsg && (
+            <p className="text-xs text-red-400 font-medium">{errorMsg}</p>
+          )}
+
+          <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-800">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleClose}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              size="sm"
+              disabled={!isMatch || isDeleting}
+              isLoading={isDeleting}
+            >
+              Eliminar definitivamente
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
