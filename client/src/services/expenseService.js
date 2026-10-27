@@ -25,26 +25,3 @@ export const deleteExpenseById = async (projectId, expenseId) => {
   const { data } = await api.delete(`/projects/${projectId}/expenses/${expenseId}`);
   return data;
 };
-
-// Registra una liquidación de deuda creando un gasto especial
-export const settleDebt = async (projectId, { from, to, amount, method }) => {
-  const payload = {
-    title: 'Liquidación de deuda',
-    amount: Number(amount),
-    paidBy: from,
-    splitBetween: [{ user: to, share: Number(amount) }],
-    isPersonal: false,
-    isSettlement: true,
-    paymentMethod: method || 'bizum',
-    date: new Date().toISOString(),
-  };
-
-  const { data } = await api.post(`/projects/${projectId}/expenses`, payload);
-  return data;
-};
-
-// Revertir / deshacer una liquidación equivale a eliminar dicho gasto
-export const revertSettlement = async (projectId, settlementExpenseId) => {
-  const { data } = await api.delete(`/projects/${projectId}/expenses/${settlementExpenseId}`);
-  return data;
-};

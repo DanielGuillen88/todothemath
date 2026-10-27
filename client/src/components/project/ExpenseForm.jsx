@@ -17,10 +17,11 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
   const getInitialForm = () => ({
     title: '',
     amount: '',
-    category: 'Comida',
+    category: 'Otros',
     date: new Date().toISOString().split('T')[0],
-    isPersonal: true, // 👈 Por defecto es gasto personal (checkbox desmarcado)
-    paidBy: currentUserId, // 👈 Siempre el usuario autenticado
+    // isPersonal: false, // 👈 Compartido por defecto en proyectos de grupo
+    isPersonal: true, // 👈 personal por defecto
+    paidBy: currentUserId,
   });
 
   const [form, setForm] = useState(getInitialForm);
@@ -46,8 +47,7 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
     const cleanId = String(extractEntityId(memberId));
     setSelectedMembers((prev) => {
       if (prev.includes(cleanId)) {
-        // Evitamos dejar el reparto con 0 personas
-        if (prev.length === 1) return prev;
+        if (prev.length === 1) return prev; // Evita dejar el reparto vacío
         return prev.filter((id) => id !== cleanId);
       }
       return [...prev, cleanId];
@@ -75,7 +75,6 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
       return;
     }
 
-    // Aseguramos que paidBy siempre sea el usuario que está rellenando el formulario
     const normalizedForm = {
       ...form,
       paidBy: currentUserId,
@@ -132,7 +131,7 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
             project={project}
             currentUser={currentUser}
             disabled={isSubmitting}
-            showSplitSelector={true}
+            showSplitSelector={!form.isPersonal}
             selectedMembers={selectedMembers}
             onToggleMember={toggleMemberSplit}
           />

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { 
   CheckCircle2, 
   ArrowRight, 
-  Check, 
+  Check,
+  X,
   AlertCircle, 
   RotateCcw, 
   Wallet, 
@@ -15,13 +16,14 @@ import { extractEntityId } from '../../utils/expenseHelpers/index.js';
 import { Button } from '../ui';
 
 const PAYMENT_METHODS = [
-  { id: 'cash', label: 'Efectivo', icon: Banknote },
   { id: 'bizum', label: 'Bizum', icon: Smartphone },
-  { id: 'bank', label: 'Transferencia Bancaria', icon: CreditCard },
+  { id: 'cash', label: 'Efectivo', icon: Banknote },
+  { id: 'bank', label: 'Transferencia', icon: CreditCard },
   { id: 'other', label: 'Otro', icon: Wallet },
 ];
 
 export default function SettlementList({
+  project,
   balances,
   currency = '€',
   currentUser,
@@ -29,57 +31,121 @@ export default function SettlementList({
   onRevertSettle,
   settlementHistory = [],
 }) {
-  // 1. Identificadores robustos del usuario actual
+
+  const [confirmRevertId, setConfirmRevertId] = useState(null);
+
+  // 1. Identificadores robustos del usuario autenticado
   const currentUserId = String(
     currentUser?._id ||
     currentUser?.id ||
     currentUser?.user?._id ||
     currentUser?.user?.id ||
+    currentUser?.data?.user?._id ||
+    currentUser?.data?.user?.id ||
     extractEntityId(currentUser) ||
     ''
-  );
+  ).trim();
 
   const currentUserEmail = String(
-    currentUser?.email || currentUser?.user?.email || ''
+    currentUser?.email || 
+    currentUser?.user?.email || 
+    currentUser?.data?.user?.email || 
+    ''
   ).toLowerCase().trim();
 
-  // Función universal para verificar si una entidad corresponde al usuario autenticado
-  const isMe = (entity, entityId) => {
-    if (entityId && String(entityId) === currentUserId) return true;
-    if (!entity) return false;
+  const currentUserName = String(
+    currentUser?.name || 
+    currentUser?.user?.name || 
+    currentUser?.data?.user?.name || 
+    ''
+  ).toLowerCase().trim();
 
-    if (typeof entity === 'string') {
-      const val = entity.trim();
-      if (currentUserId && val === currentUserId) return true;
-      if (currentUserEmail && val.toLowerCase() === currentUserEmail) return true;
-      return false;
+  // 2. Validador y extractor estricto de Mongo ObjectId (24 hex chars)
+  const isMongoId = (val) => typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val.trim());
+
+  // Resuelve siempre el ObjectId de MongoDB buscando en project.members si viene como nombre
+  const resolveMemberId = (val, entityObj) => {
+    const extractedFromObj = extractEntityId(entityObj);
+    if (isMongoId(extractedFromObj)) return extractedFromObj;
+
+    const extractedFromVal = extractEntityId(val);
+    if (isMongoId(extractedFromVal)) return extractedFromVal;
+
+    if (isMongoId(val)) return String(val).trim();
+
+    const searchStr = String(val?.name || val || '').toLowerCase().trim();
+    if (searchStr) {
+      if (currentUserId && (searchStr === currentUserName || searchStr === currentUserEmail)) {
+        return currentUserId;
+      }
+
+      if (Array.isArray(project?.members)) {
+        const found = project.members.find((m) => {
+          const mId = extractEntityId(m);
+          const mName = String(m?.name || '').toLowerCase().trim();
+          const mEmail = String(m?.email || '').toLowerCase().trim();
+          return mName === searchStr || mEmail === searchStr || mId === searchStr;
+        });
+        if (found) return extractEntityId(found);
+      }
     }
 
-    const resolvedId = String(
-      entity._id || entity.id || entity.userId || entity.user?._id || entity.user?.id || extractEntityId(entity) || ''
-    );
-    const resolvedEmail = String(entity.email || entity.user?.email || '').toLowerCase().trim();
-
-    return Boolean(
-      (currentUserId && resolvedId && resolvedId === currentUserId) ||
-      (currentUserEmail && resolvedEmail && resolvedEmail === currentUserEmail)
-    );
+    return extractedFromObj || extractedFromVal || String(val || '');
   };
 
-  // 2. Transacciones originales que vienen del backend
-  const allSettlements = balances?.settlements || balances?.transactions || [];
+  const isMe = (entity, entityId) => {
+    const idToTest = String(
+      entityId || 
+      extractEntityId(entity) || 
+      (typeof entity === 'string' && !entity.includes('@') ? entity : entity?._id || entity?.id || '')
+    ).trim();
 
-  // 3. Filtrado de privacidad estricta: solo lo que concierne al usuario logueado
+    if (currentUserId && idToTest && currentUserId === idToTest) return true;
+
+    const emailToTest = String(
+      entity?.email || 
+      (typeof entity === 'string' && entity.includes('@') ? entity : '')
+    ).toLowerCase().trim();
+
+    if (currentUserEmail && emailToTest && currentUserEmail === emailToTest) return true;
+
+    const nameToTest = String(
+      entity?.name || 
+      (typeof entity === 'string' ? entity : '')
+    ).toLowerCase().trim();
+
+    if (currentUserName && nameToTest && currentUserName === nameToTest) return true;
+
+    return false;
+  };
+
+  // 3. Extracción segura de liquidaciones
+  const allSettlements = Array.isArray(balances?.settlements)
+    ? balances.settlements
+    : Array.isArray(balances?.transactions)
+    ? balances.transactions
+    : [];
+
   const myPendingSettlements = allSettlements.filter((tx) => {
-    return isMe(tx.from, tx.fromId) || isMe(tx.to, tx.toId);
+    if (!currentUserId && !currentUserEmail && !currentUserName) return true;
+
+    const fId = resolveMemberId(tx.fromId || tx.from, tx.from);
+    const tId = resolveMemberId(tx.toId || tx.to, tx.to);
+
+    return isMe(tx.from, fId) || isMe(tx.to, tId);
   });
 
   const myHistory = settlementHistory.filter((st) => {
-    return isMe(st.from, st.fromId) || isMe(st.to, st.toId);
+    if (!currentUserId && !currentUserEmail && !currentUserName) return true;
+
+    const fId = resolveMemberId(st.fromId || st.from, st.from);
+    const tId = resolveMemberId(st.toId || st.to, st.to);
+
+    return isMe(st.from, fId) || isMe(st.to, tId);
   });
 
   // Estados locales
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'history'
+  const [activeTab, setActiveTab] = useState('pending');
   const [selectedTx, setSelectedTx] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('bizum');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,13 +153,39 @@ export default function SettlementList({
   const [feedback, setFeedback] = useState(null);
 
   const handleOpenSettleModal = (txData) => {
-    setSelectedTx(txData);
+    const cleanFromId = resolveMemberId(txData.fromId || txData.from, txData.from);
+    const cleanToId = resolveMemberId(txData.toId || txData.to, txData.to);
+
+    const fromName = typeof txData.from === 'object'
+      ? txData.from?.name || txData.from?.email || 'Participante'
+      : txData.fromName || txData.from || 'Participante';
+
+    const toName = typeof txData.to === 'object'
+      ? txData.to?.name || txData.to?.email || 'Participante'
+      : txData.toName || txData.to || 'Participante';
+
+    setSelectedTx({
+      ...txData,
+      fromId: cleanFromId,
+      toId: cleanToId,
+      fromName,
+      toName,
+    });
     setPaymentMethod('bizum');
     setFeedback(null);
   };
 
   const handleConfirmSettle = async () => {
     if (!selectedTx || !onSettle) return;
+
+    if (!isMongoId(selectedTx.fromId) || !isMongoId(selectedTx.toId)) {
+      setFeedback({
+        type: 'error',
+        text: 'Error de identificación: no se pudo resolver el ID de uno de los participantes.',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setFeedback(null);
 
@@ -106,7 +198,7 @@ export default function SettlementList({
       });
 
       setSelectedTx(null);
-      setFeedback({ type: 'success', text: 'Deuda registrada como pagada.' });
+      setFeedback({ type: 'success', text: 'Pago registrado con éxito.' });
       setTimeout(() => setFeedback(null), 3000);
     } catch (err) {
       setFeedback({
@@ -118,19 +210,21 @@ export default function SettlementList({
     }
   };
 
-  const handleRevert = async (settlementId) => {
+const handleRevert = async (settlementId) => {
     if (!onRevertSettle) return;
     setRevertingId(settlementId);
 
     try {
       await onRevertSettle(settlementId);
-      setFeedback({ type: 'success', text: 'Liquidación deshecha. Se ha devuelto al balance.' });
+      setConfirmRevertId(null); // 👈 limpia la confirmación
+      setFeedback({ type: 'success', text: 'Liquidación deshecha. Vuelve a figurar en pendientes.' });
       setTimeout(() => setFeedback(null), 3000);
     } catch (err) {
       setFeedback({
         type: 'error',
         text: err.response?.data?.message || 'Error al revertir la liquidación.',
       });
+      setConfirmRevertId(null);
     } finally {
       setRevertingId(null);
     }
@@ -138,19 +232,14 @@ export default function SettlementList({
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl relative">
-      {/* Cabecera y Selector de pestañas */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-            <span>Tus Liquidaciones y Deudas</span>
+            <span>Liquidaciones y Deudas</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Solo tú puedes ver las transferencias en las que debes pagar o recibir dinero.
-          </p>
         </div>
 
-        {/* Pestañas: Pendientes vs Historial */}
         <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto text-xs font-medium">
           <button
             type="button"
@@ -205,11 +294,11 @@ export default function SettlementList({
           ) : (
             <div className="space-y-3">
               {myPendingSettlements.map((tx, idx) => {
-                const actualFromId = String(tx.fromId || extractEntityId(tx.from) || tx.from);
-                const actualToId = String(tx.toId || extractEntityId(tx.to) || tx.to);
+                const actualFromId = resolveMemberId(tx.fromId || tx.from, tx.from);
+                const actualToId = resolveMemberId(tx.toId || tx.to, tx.to);
 
-                const isDebtor = actualFromId === currentUserId;
-                const isCreditor = actualToId === currentUserId;
+                const isDebtor = isMe(tx.from, actualFromId);
+                const isCreditor = isMe(tx.to, actualToId);
 
                 const fromName = typeof tx.from === 'object'
                   ? tx.from?.name || tx.from?.email || 'Participante'
@@ -229,11 +318,11 @@ export default function SettlementList({
                   >
                     <div className="flex items-center gap-2.5 font-medium flex-wrap">
                       <span className={isDebtor ? 'text-red-400 font-semibold' : 'text-slate-300'}>
-                        {fromName} {isDebtor ? '(Tú)' : ''}
+                        {isDebtor ? 'Tú' : fromName}
                       </span>
                       <ArrowRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                       <span className={isCreditor ? 'text-emerald-400 font-semibold' : 'text-slate-300'}>
-                        {toName} {isCreditor ? '(Tú)' : ''}
+                        {isCreditor ? 'a ti' : toName}
                       </span>
 
                       {isDebtor ? (
@@ -257,13 +346,7 @@ export default function SettlementList({
                           size="sm"
                           variant={isDebtor ? 'primary' : 'secondary'}
                           icon={Check}
-                          onClick={() => handleOpenSettleModal({
-                            ...tx,
-                            fromId: actualFromId,
-                            toId: actualToId,
-                            fromName,
-                            toName,
-                          })}
+                          onClick={() => handleOpenSettleModal(tx)}
                           className="shrink-0"
                         >
                           Marcar pagado
@@ -288,16 +371,18 @@ export default function SettlementList({
           ) : (
             <div className="space-y-3">
               {myHistory.map((item, idx) => {
-                const actualFromId = String(item.fromId || extractEntityId(item.from) || item.from);
+                const actualFromId = resolveMemberId(item.fromId || item.from, item.from);
                 const fromName = typeof item.from === 'object' ? (item.from?.name || item.from?.email) : item.from;
                 const toName = typeof item.to === 'object' ? (item.to?.name || item.to?.email) : item.to;
+
+                const userIsPayer = isMe(item.from, actualFromId);
 
                 const methodInfo = PAYMENT_METHODS.find((m) => m.id === item.method) || PAYMENT_METHODS[0];
                 const MethodIcon = methodInfo.icon;
 
                 return (
                   <div
-                    key={item._id || `hist-${idx}`}
+                    key={item._id || item.id || `hist-${idx}`}
                     className="p-4 bg-slate-950/80 border border-emerald-900/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm"
                   >
                     <div className="flex items-center gap-3">
@@ -307,7 +392,9 @@ export default function SettlementList({
                       <div>
                         <div className="flex items-center gap-2 font-medium">
                           <span className="text-white">
-                            {fromName || 'Usuario'} pagó a {toName || 'Usuario'}
+                            {userIsPayer
+                              ? `Tú pagaste a ${toName || 'Usuario'}`
+                              : `${fromName || 'Usuario'} te pagó a ti`}
                           </span>
                           <span className="text-xs font-semibold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-900">
                             {Number(item.amount || 0).toFixed(2)} {currency}
@@ -324,19 +411,45 @@ export default function SettlementList({
                       </div>
                     </div>
 
-                    {/* Botón para deshacer el pago */}
                     {onRevertSettle && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon={RotateCcw}
-                        isLoading={revertingId === item._id}
-                        onClick={() => handleRevert(item._id)}
-                        title="Deshacer pago y volver a incluir en deudas"
-                        className="text-slate-400 hover:text-amber-400 hover:bg-slate-800 self-end sm:self-auto"
-                      >
-                        Deshacer
-                      </Button>
+                      <div className="self-end sm:self-auto shrink-0">
+                        {confirmRevertId === (item._id || item.id) ? (
+                          <div className="flex items-center gap-1.5 bg-slate-900 border border-amber-900/60 px-2 py-1 rounded-lg animate-in fade-in zoom-in-95">
+                            <span className="text-[11px] text-amber-300 font-medium mr-1">
+                              ¿Deshacer pago?
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              icon={Check}
+                              isLoading={revertingId === (item._id || item.id)}
+                              onClick={() => handleRevert(item._id || item.id)}
+                              className="px-1.5 py-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/50"
+                              title="Confirmar reversión"
+                            />
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              icon={X}
+                              disabled={revertingId === (item._id || item.id)}
+                              onClick={() => setConfirmRevertId(null)}
+                              className="px-1.5 py-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                              title="Cancelar"
+                            />
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={RotateCcw}
+                            onClick={() => setConfirmRevertId(item._id || item.id)}
+                            title="Deshacer pago y volver a incluir en deudas"
+                            className="text-slate-400 hover:text-amber-400 hover:bg-slate-800"
+                          >
+                            Deshacer
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 );
@@ -360,8 +473,8 @@ export default function SettlementList({
               <strong className="text-white font-semibold">
                 {Number(selectedTx.amount || 0).toFixed(2)} {currency}
               </strong>{' '}
-              de <span className="text-indigo-300 font-medium">{selectedTx.fromName}</span> a{' '}
-              <span className="text-indigo-300 font-medium">{selectedTx.toName}</span>.
+              de <span className="text-indigo-300 font-medium">{isMe(null, selectedTx.fromId) ? 'ti' : selectedTx.fromName}</span> a{' '}
+              <span className="text-indigo-300 font-medium">{isMe(null, selectedTx.toId) ? 'ti' : selectedTx.toName}</span>.
             </p>
 
             <div>

@@ -1,259 +1,290 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import {
-  getProjectById,
-  addMemberToProject,
-  removeMemberFromProject,
+import { useState, useEffect, useCallback, useMemo } from 'react';
+
+// Servicios de Proyectos
+import { 
+  getProjectById, 
+  addMemberToProject, 
+  removeMemberFromProject 
 } from '../services/projectService';
-import {
-  getProjectExpenses,
-  getProjectBalances,
-  createExpense,
-  updateExpenseById,
-  deleteExpenseById,
-  settleDebt as settleDebtService,
-  revertSettlement as revertSettlementService,
+
+// Servicios de Gastos
+import { 
+  getProjectExpenses, 
+  getProjectBalances, 
+  createExpense, 
+  updateExpenseById, 
+  deleteExpenseById 
 } from '../services/expenseService';
 
-export function useProjectDetails(projectId, user) {
+// Servicios de Liquidaciones (Colección Settlement)
+import { 
+  createSettlement, 
+  getProjectSettlements, 
+  deleteSettlement 
+} from '../services/settlementService';
+
+import { extractEntityId } from '../utils/expenseHelpers/index.js';
+
+export function useProjectDetails(projectId, currentUser) {
   const [project, setProject] = useState(null);
-  const [allExpenses, setAllExpenses] = useState([]);
-  const [balances, setBalances] = useState(null);
+  const [expenses, setExpenses] = useState([]);
+  const [balances, setBalances] = useState({ balances: [], settlements: [] });
+  const [settlementHistory, setSettlementHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // 1. Extracción robusta y normalizada del usuario actual
   const currentUserId = String(
-    user?._id || user?.id || user?.user?._id || user?.user?.id || ''
-  );
-  const currentUserEmail = (
-    user?.email || user?.user?.email || ''
+    currentUser?._id ||
+    currentUser?.id ||
+    currentUser?.user?._id ||
+    currentUser?.user?.id ||
+    currentUser?.data?.user?._id ||
+    currentUser?.data?.user?.id ||
+    extractEntityId(currentUser) ||
+    ''
+  ).trim();
+
+  const currentUserEmail = String(
+    currentUser?.email ||
+    currentUser?.user?.email ||
+    currentUser?.data?.user?.email ||
+    ''
   ).toLowerCase().trim();
 
-  const isMe = useCallback(
-    (target) => {
-      if (!target) return false;
-      if (typeof target === 'string') {
-        return (
-          target === currentUserId ||
-          (currentUserEmail && target.toLowerCase() === currentUserEmail)
-        );
-      }
-      const targetId = String(target._id || target.id || '');
-      const targetEmail = (target.email || '').toLowerCase().trim();
-      return (
-        (currentUserId && targetId === currentUserId) ||
-        (currentUserEmail && targetEmail === currentUserEmail)
-      );
-    },
-    [currentUserId, currentUserEmail]
-  );
+  const currentUserName = String(
+    currentUser?.name ||
+    currentUser?.user?.name ||
+    currentUser?.data?.user?.name ||
+    ''
+  ).toLowerCase().trim();
 
-  const loadProjectData = useCallback(
-    async (isSilent = false) => {
-      try {
-        if (!isSilent) setLoading(true);
-        const [projectRes, balancesRes, expensesRes] = await Promise.allSettled([
-          getProjectById(projectId),
-          getProjectBalances(projectId),
-          getProjectExpenses(projectId),
-        ]);
+  // 2. Función de identidad canónica (compara ID, Email y Nombre)
+  const isMe = useCallback((entity, optionalId) => {
+    const idToTest = String(
+      optionalId || 
+      extractEntityId(entity) || 
+      (typeof entity === 'string' && !entity.includes('@') ? entity : entity?._id || entity?.id || '')
+    ).trim();
 
-        if (projectRes.status === 'fulfilled') {
-          const pData = projectRes.value.data;
-          const extracted =
-            pData?.data?.project || pData?.project || pData?.data || pData;
-          if (extracted && (extracted._id || extracted.title || extracted.name)) {
-            setProject(extracted);
-          }
-        }
+    if (currentUserId && idToTest && currentUserId === idToTest) {
+      return true;
+    }
 
-        if (balancesRes.status === 'fulfilled') {
-          const bData = balancesRes.value.data;
-          setBalances(bData?.data || bData);
-        }
+    const emailToTest = String(
+      entity?.email || 
+      (typeof entity === 'string' && entity.includes('@') ? entity : '')
+    ).toLowerCase().trim();
 
-        if (expensesRes.status === 'fulfilled') {
-          const eData = expensesRes.value.data;
-          const list =
-            eData?.data?.expenses ||
-            eData?.expenses ||
-            eData?.data ||
-            (Array.isArray(eData) ? eData : []);
-          setAllExpenses(Array.isArray(list) ? list : []);
-        }
-      } catch (err) {
-        console.error('Error cargando el proyecto:', err);
-      } finally {
-        if (!isSilent) setLoading(false);
-      }
-    },
-    [projectId]
-  );
+    if (currentUserEmail && emailToTest && currentUserEmail === emailToTest) {
+      return true;
+    }
+
+    const nameToTest = String(
+      entity?.name || 
+      (typeof entity === 'string' ? entity : '')
+    ).toLowerCase().trim();
+
+    if (currentUserName && nameToTest && currentUserName === nameToTest) {
+      return true;
+    }
+
+    return false;
+  }, [currentUserId, currentUserEmail, currentUserName]);
+
+  // 3. Carga general de datos concurrentes
+  const fetchData = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setLoading(true);
+      const [projRes, expRes, balancesRes, settlementsRes] = await Promise.all([
+        getProjectById(projectId),
+        getProjectExpenses(projectId),
+        getProjectBalances(projectId),
+        getProjectSettlements(projectId),
+      ]);
+
+      const projData = projRes.data?.data?.project || projRes.data?.project || projRes.data;
+      setProject(projData);
+
+      const rawExpenses = 
+        expRes.data?.data?.expenses || 
+        expRes.data?.expenses || 
+        expRes.data?.data || 
+        (Array.isArray(expRes.data) ? expRes.data : []);
+
+      setExpenses(Array.isArray(rawExpenses) ? rawExpenses : []);
+
+      setBalances(balancesRes.data?.data || balancesRes.data || { balances: [], settlements: [] });
+
+      const rawSettlements = 
+        settlementsRes.data?.data?.settlements || 
+        settlementsRes.data?.settlements || 
+        settlementsRes.data?.data || 
+        (Array.isArray(settlementsRes.data) ? settlementsRes.data : []);
+
+      setSettlementHistory(Array.isArray(rawSettlements) ? rawSettlements : []);
+    } catch (err) {
+      console.error('Error cargando detalles del proyecto:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
 
   useEffect(() => {
-    loadProjectData();
-  }, [loadProjectData]);
+    fetchData();
+  }, [fetchData]);
 
-  // 1. Gastos ordinarios
-  // const expenses = useMemo(() => {
-  //   return allExpenses.filter(
-  //     (exp) => !exp.isSettlement && exp.title !== 'Liquidación de deuda'
-  //   );
-  // }, [allExpenses]);
-  // 1. Gastos ordinarios con filtro estricto de privacidad
-  const expenses = useMemo(() => {
-    return allExpenses.filter((exp) => {
-      // Excluir reembolsos y liquidaciones del feed de gastos
-      if (exp.isSettlement || exp.title === 'Liquidación de deuda') {
-        return false;
+  // 4. Refresco exclusivo de balances y liquidaciones
+  const refreshFinances = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const [balancesRes, settlementsRes] = await Promise.all([
+        getProjectBalances(projectId),
+        getProjectSettlements(projectId),
+      ]);
+
+      setBalances(balancesRes.data?.data || balancesRes.data || { balances: [], settlements: [] });
+
+      const rawSettlements = 
+        settlementsRes.data?.data?.settlements || 
+        settlementsRes.data?.settlements || 
+        settlementsRes.data?.data || 
+        (Array.isArray(settlementsRes.data) ? settlementsRes.data : []);
+
+      setSettlementHistory(Array.isArray(rawSettlements) ? rawSettlements : []);
+    } catch (err) {
+      console.error('Error actualizando finanzas:', err);
+    }
+  }, [projectId]);
+
+  // 5. Cuota individual de un gasto (evita errores con cuota 0 y calcula reparto equitativo si falta)
+  const getMyShareForExpense = useCallback((exp) => {
+    if (!exp) return 0;
+    
+    // Si es personal, solo cuenta como cuota si lo pagaste tú
+    if (exp.isPersonal) {
+      return isMe(exp.paidBy) ? Number(exp.amount || 0) : 0;
+    }
+
+    // Reparto manual registrado en splitBetween
+    if (Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0) {
+      const mySplit = exp.splitBetween.find((s) => isMe(s.user, extractEntityId(s.user || s)));
+      if (mySplit) {
+        return mySplit.share !== undefined && mySplit.share !== null && !isNaN(Number(mySplit.share))
+          ? Number(mySplit.share)
+          : Number((Number(exp.amount || 0) / exp.splitBetween.length).toFixed(2));
       }
+    }
+    return 0;
+  }, [isMe]);
 
-      const isPayer = isMe(exp.paidBy);
-
-      // Si es un gasto personal, SOLO lo ve quien lo pagó
-      if (exp.isPersonal) {
-        return isPayer;
-      }
-
-      // Si es compartido y lo pagó el usuario actual, siempre lo ve
-      if (isPayer) {
-        return true;
-      }
-
-      // Si es compartido y lo pagó otro, verificar si el usuario actual está en splitBetween
-      if (Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0) {
-        return exp.splitBetween.some((item) => isMe(item.user || item));
-      }
-
-      // Reparto equitativo por defecto a todos los miembros del proyecto
-      return true;
-    });
-  }, [allExpenses, isMe]);
-
-  // 2. Historial de liquidaciones
-  const settlementHistory = useMemo(() => {
-    return allExpenses
-      .filter(
-        (exp) => Boolean(exp.isSettlement) || exp.title === 'Liquidación de deuda'
-      )
-      .map((exp) => {
-        const fromEntity = exp.paidBy;
-        const firstSplit = Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0
-          ? exp.splitBetween[0]
-          : null;
-        const toEntity = firstSplit?.user || firstSplit;
-
-        return {
-          _id: exp._id || exp.id,
-          from: fromEntity,
-          fromId: String(fromEntity?._id || fromEntity?.id || fromEntity || ''),
-          to: toEntity,
-          toId: String(toEntity?._id || toEntity?.id || toEntity || ''),
-          amount: exp.amount,
-          method: exp.paymentMethod || 'bizum',
-          date: exp.date || exp.createdAt,
-        };
-      });
-  }, [allExpenses]);
-
-  // console.log('TODOS LOS GASTOS:', allExpenses);
-  // console.log('HISTORIAL FILTRADO:', settlementHistory);
-  // console.log('DETALLE GASTO LIQUIDACION:', allExpenses[0]);
-
-  const getMyShareForExpense = useCallback(
-    (exp) => {
-      const rawAmount = Number(exp?.amount || 0);
-      if (!rawAmount || rawAmount <= 0) return 0;
-
-      if (exp.isPersonal) {
-        return isMe(exp.paidBy) ? rawAmount : 0;
-      }
-
-      if (Array.isArray(exp.splitBetween) && exp.splitBetween.length > 0) {
-        const mySplitItem = exp.splitBetween.find(
-          (item) => isMe(item.user) || isMe(item)
-        );
-        if (mySplitItem) {
-          return Number(mySplitItem.share ?? rawAmount / exp.splitBetween.length);
-        }
-        return 0;
-      }
-
-      const totalMembers = project?.members?.length || 1;
-      return Number((rawAmount / totalMembers).toFixed(2));
-    },
-    [isMe, project?.members]
-  );
-
+  // 6. Métricas financieras exactas para ProjectHeader
   const metrics = useMemo(() => {
-    let myRealShareTotal = 0;
-    let totalProjectShared = 0;
-    let myPersonalOnlyTotal = 0;
+    let totalSpent = 0;       // Compras comunes del proyecto
+    let myTotalPaid = 0;      // Pagado de mi bolsillo en comunes
+    let myTotalShare = 0;     // Mi parte consumida en comunes
+    let myPersonal = 0;       // Mis gastos personales exclusivos
 
     expenses.forEach((exp) => {
-      const rawAmount = Number(exp.amount || 0);
-      const isPaidByMe = isMe(exp.paidBy);
+      if (!exp || exp.isSettlement) return;
+      const amt = Number(exp.amount || 0);
 
+      // Gastos personales
       if (exp.isPersonal) {
-        if (isPaidByMe) {
-          myRealShareTotal += rawAmount;
-          myPersonalOnlyTotal += rawAmount;
+        if (isMe(exp.paidBy)) {
+          myPersonal += amt;
         }
-      } else {
-        totalProjectShared += rawAmount;
-        myRealShareTotal += getMyShareForExpense(exp);
+        return;
       }
+
+      // Gastos compartidos grupales
+      totalSpent += amt;
+
+      if (isMe(exp.paidBy)) {
+        myTotalPaid += amt;
+      }
+      myTotalShare += getMyShareForExpense(exp);
     });
 
-    return {
-      myRealTotal: myRealShareTotal,
-      totalShared: totalProjectShared,
-      myPersonal: myPersonalOnlyTotal,
-    };
-  }, [expenses, isMe, getMyShareForExpense]);
+    // Liquidaciones pagadas y recibidas (Settlement)
+    let mySettledPaid = 0;
+    let mySettledReceived = 0;
 
-  const addExpense = async (payload) => {
-    await createExpense(projectId, payload);
-    await loadProjectData(true);
+    settlementHistory.forEach((st) => {
+      const amt = Number(st.amount || 0);
+      const fId = extractEntityId(st.from) || st.fromId || st.from;
+      const tId = extractEntityId(st.to) || st.toId || st.to;
+
+      if (isMe(st.from, fId)) mySettledPaid += amt;
+      if (isMe(st.to, tId)) mySettledReceived += amt;
+    });
+
+    // Balances y costes finales
+    const effectivePaid = myTotalPaid + mySettledPaid;
+    const effectiveConsumed = myTotalShare + mySettledReceived;
+    const myNetBalance = Number((effectivePaid - effectiveConsumed).toFixed(2));
+    const myRealTotal = Number((myPersonal + myTotalShare).toFixed(2));
+
+    // Presupuesto restante: Presupuesto fijado menos TU coste real (personales + tu cuota compartida)
+    const projectBudget = Number(project?.budget || 0);
+    const budgetRemaining = projectBudget > 0 
+      ? Number((projectBudget - myRealTotal).toFixed(2)) 
+      : null;
+
+    return {
+      totalSpent: Number(totalSpent.toFixed(2)),
+      myTotalPaid: Number(myTotalPaid.toFixed(2)),
+      myTotalShare: Number(myTotalShare.toFixed(2)),
+      myPersonal: Number(myPersonal.toFixed(2)),
+      myRealTotal,
+      myNetBalance,
+      budgetRemaining,
+    };
+  }, [expenses, settlementHistory, project?.budget, isMe, getMyShareForExpense]);
+
+  // 7. Acciones sobre Gastos
+  const addExpense = async (expenseData) => {
+    await createExpense(projectId, expenseData);
+    await fetchData();
   };
 
-  const updateExpense = async (expenseId, payload) => {
-    await updateExpenseById(projectId, expenseId, payload);
-    await loadProjectData(true);
+  const updateExpense = async (expenseId, expenseData) => {
+    await updateExpenseById(projectId, expenseId, expenseData);
+    await fetchData();
   };
 
   const deleteExpense = async (expenseId) => {
     await deleteExpenseById(projectId, expenseId);
-    await loadProjectData(true);
+    await fetchData();
   };
 
+  // 8. Acciones sobre Miembros
   const addMember = async (email) => {
-    const data = await addMemberToProject(projectId, email);
-    await loadProjectData(true);
-    return data;
+    await addMemberToProject(projectId, email);
+    await fetchData();
   };
 
-  const removeMember = async (memberId) => {
-    const data = await removeMemberFromProject(projectId, memberId);
-    await loadProjectData(true);
-    return data;
+  const removeMember = async (userId) => {
+    await removeMemberFromProject(projectId, userId);
+    await fetchData();
   };
 
-  const settle = async (settleData) => {
-    const data = await settleDebtService(projectId, settleData);
-    await loadProjectData(true);
-    return data;
+  // 9. Acciones sobre Liquidaciones
+  const handleSettle = async ({ from, to, amount, method }) => {
+    await createSettlement(projectId, { from, to, amount, method });
+    await refreshFinances();
   };
 
-  const revertSettle = async (settlementId) => {
-    const data = await revertSettlementService(projectId, settlementId);
-    await loadProjectData(true);
-    return data;
+  const handleRevertSettle = async (settlementId) => {
+    await deleteSettlement(projectId, settlementId);
+    await refreshFinances();
   };
 
   return {
     project,
     expenses,
-    settlementHistory,
     balances,
+    settlementHistory,
     loading,
     metrics,
     isMe,
@@ -263,7 +294,8 @@ export function useProjectDetails(projectId, user) {
     deleteExpense,
     addMember,
     removeMember,
-    settle,
-    revertSettle,
+    handleSettle,
+    handleRevertSettle,
+    refreshFinances,
   };
 }

@@ -27,8 +27,8 @@ export default function ProjectDetails() {
     deleteExpense,
     addMember,
     removeMember,
-    settle,
-    revertSettle,
+    handleSettle,
+    handleRevertSettle,
   } = useProjectDetails(id, user);
 
   if (loading && !project) {
@@ -59,10 +59,18 @@ export default function ProjectDetails() {
         <ArrowLeft className="w-4 h-4" /> Volver a Mis Proyectos
       </Link>
 
-      <ProjectHeader project={project} metrics={metrics} currentUser={user}/>
+      <ProjectHeader project={project} metrics={metrics} currentUser={user} />
+
       <SettlementList
-        balances={balances} currency={project?.currency} currentUser={user}
-        onSettle={settle} onRevertSettle={revertSettle} settlementHistory={settlementHistory}/>
+        project={project}
+        balances={balances}
+        currency={project?.currency || 'EUR'}
+        currentUser={user}
+        settlementHistory={settlementHistory}
+        onSettle={handleSettle}
+        onRevertSettle={handleRevertSettle}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <ExpenseForm project={project} currentUser={user} onSubmit={addExpense} />
@@ -79,8 +87,10 @@ export default function ProjectDetails() {
 
         <div className="space-y-6">
           <MemberList
-            project={project} currentUser={user}
-            onAddMember={addMember} onRemoveMember={removeMember}
+            project={project}
+            currentUser={user}
+            onAddMember={addMember}
+            onRemoveMember={removeMember}
           />
         </div>
       </div>

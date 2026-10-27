@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getProjects, updateProjectById } from '../services/projectService';
-import { FolderKanban, Plus, X, AlertCircle } from 'lucide-react';
+import { FolderKanban, Plus, X, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
 import { Button } from '../components/ui';
 import ProjectCard from '../components/project/ProjectCard';
 import DeleteProjectModal from '../components/project/DeleteProjectModal';
@@ -21,11 +21,16 @@ export default function Dashboard() {
     budget: '',
     currency: 'EUR',
     type: 'trip',
-    settlementMode: 'direct',
+    // settlementMode: 'direct',
   });
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isConfirmingSave, setIsConfirmingSave] = useState(false);
 
+  // Estado para toast de éxito
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Estado para modal de eliminación
   const [deletingProject, setDeletingProject] = useState(null);
 
   const fetchProjects = async () => {
@@ -45,6 +50,15 @@ export default function Dashboard() {
     fetchProjects();
   }, []);
 
+  // Timer para limpiar el toast automáticamente
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
   const openEditModal = (p) => {
     const projectId = String(p?._id || p?.id || '');
     setEditingProject({ ...p, resolvedId: projectId });
@@ -54,18 +68,31 @@ export default function Dashboard() {
       budget: p.budget !== undefined && p.budget !== null ? p.budget : '',
       currency: p.currency || 'EUR',
       type: p.type || 'trip',
-      settlementMode: p.settlementMode || 'direct',
+      // settlementMode: p.settlementMode || 'direct',
     });
+    setErrorMsg('');
+    setIsConfirmingSave(false);
+  };
+
+  const closeEditModal = () => {
+    setEditingProject(null);
+    setIsConfirmingSave(false);
     setErrorMsg('');
   };
 
   const handleFieldChange = (field, value) => {
     setEditForm((prev) => ({ ...prev, [field]: value }));
+    if (isConfirmingSave) setIsConfirmingSave(false);
   };
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!editForm.title.trim()) return;
+
+    if (!isConfirmingSave) {
+      setIsConfirmingSave(true);
+      return;
+    }
 
     const targetId = editingProject?.resolvedId || editingProject?._id || editingProject?.id;
     if (!targetId || targetId === 'undefined') return;
@@ -80,12 +107,16 @@ export default function Dashboard() {
         budget: editForm.budget !== '' ? Number(editForm.budget) : 0,
         currency: editForm.currency,
         type: editForm.type || 'trip',
-        settlementMode: editForm.settlementMode || 'direct',
+        // settlementMode: editForm.settlementMode || 'direct',
       });
-      setEditingProject(null);
+
+      const updatedTitle = editForm.title.trim();
+      closeEditModal();
       await fetchProjects();
+      setToastMessage(`Proyecto "${updatedTitle}" actualizado con éxito`);
     } catch (err) {
       setErrorMsg(err.response?.data?.message || 'Error al actualizar el proyecto');
+      setIsConfirmingSave(false);
     } finally {
       setIsUpdating(false);
     }
@@ -94,6 +125,7 @@ export default function Dashboard() {
   const handleDeletedSuccess = (deletedId) => {
     setProjects((prev) => prev.filter((p) => String(p._id || p.id) !== String(deletedId)));
     setDeletingProject(null);
+    setToastMessage('Proyecto eliminado correctamente');
   };
 
   if (loading) {
@@ -105,7 +137,21 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
+      {/* Toast Notification Flotante */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900 border border-emerald-500/50 text-emerald-300 px-4 py-3 rounded-xl shadow-2xl shadow-black/80 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-sm font-medium">{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-slate-400 hover:text-white ml-2 p-0.5 rounded cursor-pointer transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Mis Proyectos</h1>
@@ -154,12 +200,12 @@ export default function Dashboard() {
         onSuccess={handleDeletedSuccess}
       />
 
-      {/* Modal de Edición con campos compartidos */}
+      {/* Modal de Edición con campos compartidos y confirmación */}
       {editingProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative my-8">
             <button
-              onClick={() => setEditingProject(null)}
+              onClick={closeEditModal}
               className="absolute top-4 right-4 text-slate-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -181,23 +227,46 @@ export default function Dashboard() {
                 disabled={isUpdating}
               />
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setEditingProject(null)}
-                  disabled={isUpdating}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  isLoading={isUpdating}
-                >
-                  Guardar Cambios
-                </Button>
+              <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+                <div>
+                  {isConfirmingSave && (
+                    <span className="text-xs text-amber-400 font-medium">
+                      Pulsa de nuevo para aplicar los cambios
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      if (isConfirmingSave) {
+                        setIsConfirmingSave(false);
+                      } else {
+                        closeEditModal();
+                      }
+                    }}
+                    disabled={isUpdating}
+                  >
+                    {isConfirmingSave ? 'Volver' : 'Cancelar'}
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    size="sm"
+                    isLoading={isUpdating}
+                    className={
+                      isConfirmingSave
+                        ? '!bg-amber-600 hover:!bg-amber-500 !text-white'
+                        : ''
+                    }
+                    icon={isConfirmingSave ? Check : undefined}
+                  >
+                    {isConfirmingSave ? '¿Confirmar cambios?' : 'Guardar Cambios'}
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

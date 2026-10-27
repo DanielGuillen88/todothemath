@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Receipt, Filter, Layers, ChevronDown, ChevronRight } from 'lucide-react';
+import { Receipt, ChevronDown, ChevronRight } from 'lucide-react';
 import ExpenseItem from './ExpenseItem';
 import ExpenseFilters from './ExpenseFilters';
 
@@ -24,18 +24,23 @@ export default function ExpenseList({
     setOpenAccordions((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Obtener categorías únicas presentes en la lista de gastos
+  // 1. Filtrar solo compras ordinarias
+  const regularExpenses = useMemo(() => {
+    return expenses.filter((e) => !e.isSettlement);
+  }, [expenses]);
+
+  // 2. Obtener categorías únicas reales
   const availableCategories = useMemo(() => {
     const set = new Set();
-    expenses.forEach((e) => {
+    regularExpenses.forEach((e) => {
       if (e.category) set.add(e.category);
     });
     return Array.from(set);
-  }, [expenses]);
+  }, [regularExpenses]);
 
-  // Filtrado compuesto: tipo + categoría + búsqueda por concepto
+  // 3. Filtrado compuesto: tipo + categoría + búsqueda por texto o pagador
   const filteredExpenses = useMemo(() => {
-    return expenses.filter((exp) => {
+    return regularExpenses.filter((exp) => {
       if (filterType === 'shared' && exp.isPersonal) return false;
       if (filterType === 'personal' && !exp.isPersonal) return false;
 
@@ -52,9 +57,9 @@ export default function ExpenseList({
 
       return true;
     });
-  }, [expenses, filterType, selectedCategory, searchTerm]);
+  }, [regularExpenses, filterType, selectedCategory, searchTerm]);
 
-  // Agrupamiento ordenado cronológicamente
+  // 4. Agrupamiento ordenado cronológicamente
   const groupedExpenses = useMemo(() => {
     const sorted = [...filteredExpenses].sort(
       (a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
@@ -103,6 +108,8 @@ export default function ExpenseList({
 
     return null;
   }, [filteredExpenses, groupBy, getMyShareForExpense]);
+
+  const currency = project?.currency || '€';
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
@@ -156,7 +163,7 @@ export default function ExpenseList({
                 key={key}
                 className={`border rounded-xl transition-colors overflow-hidden ${
                   isToday
-                    ? 'border-indigo-500/40 bg-slate-950/70 shadow-sm'
+                    ? 'border-indigo-500/40 bg-slate-950/70 shadow-xs'
                     : 'border-slate-800/80 bg-slate-950/30'
                 }`}
               >
@@ -184,8 +191,9 @@ export default function ExpenseList({
                     </div>
                   </div>
 
+                  {/* Cifra limpia sin la etiqueta "Tu parte:" */}
                   <span className="text-sm font-bold text-emerald-400">
-                    {groupData.myTotal.toFixed(2)} {project?.currency || '€'}
+                    {groupData.myTotal.toFixed(2)} {currency}
                   </span>
                 </button>
 
@@ -211,7 +219,7 @@ export default function ExpenseList({
           })}
         </div>
       ) : (
-        /* Vista doble: Día y Categoría */
+        /* Vista doble: Fecha y Categoría */
         <div className="space-y-4">
           {Object.entries(groupedExpenses || {}).map(([d, dayData]) => {
             const isToday = d === todayStr;
@@ -237,8 +245,9 @@ export default function ExpenseList({
                       </span>
                     )}
                   </div>
-                  <span className="text-xs font-bold text-emerald-400 px-2 py-0.5">
-                    {dayData.myTotal.toFixed(2)} {project?.currency || '€'}
+                  {/* Cifra limpia */}
+                  <span className="text-sm font-bold text-emerald-400">
+                    {dayData.myTotal.toFixed(2)} {currency}
                   </span>
                 </button>
 
@@ -249,7 +258,7 @@ export default function ExpenseList({
                         <div className="flex justify-between items-center text-xs text-slate-400 mb-1 font-medium bg-slate-900/50 px-2 py-1 rounded">
                           <span>{catName} ({catData.items.length})</span>
                           <span className="text-emerald-400 font-semibold mr-1.5">
-                            Subtotal: {catData.myTotal.toFixed(2)} {project?.currency || '€'}
+                            {catData.myTotal.toFixed(2)} {currency}
                           </span>
                         </div>
                         <div className="divide-y divide-slate-800/40">

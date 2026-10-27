@@ -1,5 +1,9 @@
 import api from './api';
 
+// Crear un nuevo proyecto
+export const createProject = (payload) => 
+  api.post('/projects', payload);
+
 // Obtener todos los proyectos
 export const getProjects = () => api.get('/projects');
 
@@ -28,7 +32,7 @@ export const updateProjectById = async (projectId, payload) => {
 // Eliminar un proyecto y sus gastos asociados
 export const deleteProjectById = async (projectId, projectName) => {
   const { data } = await api.delete(`/projects/${projectId}`, {
-    data: { projectName }, // 👈 Enviamos el nombre introducido en el body
+    data: { projectName },
   });
   return data;
 };
