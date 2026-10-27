@@ -22,7 +22,7 @@ export const ERROR_MESSAGES = {
         NOT_MATCHING_NAME: '❌ El nombre introducido no coincide con el nombre del proyecto',
     },
     EXPENSE: {
-        INVALID_AMOUNT: '💶 Debes indicar un concepto válido y un importe superior a 0',
+        INVALID_AMOUNT: '💶 Debes indicar un concepto válido y superior a 0',
         INVALID_TITLE: '📝 El concepto del gasto no puede estar vacío',
         INVALID_CATEGORY: '🏷️ Debes indicar una categoría válida',
         INVALID_IS_PERSONAL: '⚠️ El tipo de gasto debe ser personal o compartido',
@@ -30,7 +30,10 @@ export const ERROR_MESSAGES = {
         INVALID_PAID_BY: '👤 Debes indicar un usuario válido',
         NOT_FOUND: '💸 Gasto no encontrado',
         FORBIDDEN_ACTION: '⛔️ No tienes permiso para modificar o eliminar este gasto',
-        PROJECT_NOT_FOUND: '🙃 Proyecto no encontrado',
+        PROJECT_NOT_FOUND: '🙃 Proyecto o gasto no encontrado',
+        SETTLEMENT_NOT_FOUND: '🙃 Liquidación no encontrada',
+        SETTLEMENT_FORBIDDEN: '⛔️ No tienes permiso para revertir esta liquidación',
+
     },
     COMMON: {
         ROUTE_NOT_FOUND: '⛔️ Ruta no encontrada',
