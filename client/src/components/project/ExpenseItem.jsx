@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2, Users } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
 import { Button } from '../ui';
 import {
@@ -23,9 +23,8 @@ export default function ExpenseItem({
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionFeedback, setActionFeedback] = useState(null);
 
-  // Estado para el popover de desglose de miembros
-  const [showSplitPopover, setShowSplitPopover] = useState(false);
-  const splitPopoverRef = useRef(null);
+  // Estado del acordeón inline de desglose
+  const [isSplitExpanded, setIsSplitExpanded] = useState(false);
 
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [editForm, setEditForm] = useState({
@@ -39,22 +38,6 @@ export default function ExpenseItem({
 
   const currency = project?.currency || '€';
   const totalAmount = Number(expense?.amount || 0);
-
-  // Cerrar el popover al hacer clic fuera
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (splitPopoverRef.current && !splitPopoverRef.current.contains(e.target)) {
-        setShowSplitPopover(false);
-      }
-    };
-
-    if (showSplitPopover) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showSplitPopover]);
 
   const handleFieldChange = (field, value) => {
     setEditForm((prev) => ({ ...prev, [field]: value }));
@@ -75,18 +58,16 @@ export default function ExpenseItem({
     setIsConfirmingDelete(false);
     setIsConfirmingSave(false);
     setActionFeedback(null);
-    setShowSplitPopover(false);
+    setIsSplitExpanded(false);
 
     const existingPayerId = extractEntityId(expense.paidBy);
     const currentId = extractEntityId(currentUser);
 
-    // Obtener miembros activos del proyecto (excluyendo pendientes de invitación)
     const activeProjectMemberIds = (project?.members || [])
       .filter((m) => m?.status !== 'pending')
       .map((m) => extractEntityId(m?.user || m))
       .filter(Boolean);
 
-    // Si ya tiene split definido, usarlo filtrando solo IDs válidos; si no, inicializar con miembros activos
     const currentSplitMembers = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
       ? expense.splitBetween.map((s) => extractEntityId(s.user || s)).filter(Boolean)
       : activeProjectMemberIds;
@@ -290,169 +271,181 @@ export default function ExpenseItem({
 
   return (
     <div
-      className={`py-3.5 px-3.5 my-1.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all group ${cardTypeStyles} ${
+      className={`py-3.5 px-3.5 my-1.5 rounded-xl border flex flex-col transition-all group ${cardTypeStyles} ${
         isConfirmingDelete ? '!bg-red-950/30 !border-red-900/70 !border-l-red-500' : ''
       }`}
     >
-      <div className="flex-1 min-w-0 pr-2">
-        <p className="text-sm font-semibold text-white truncate">{expense.title}</p>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400 mt-1">
-          {groupBy !== 'category' && groupBy !== 'both' && (
-            <>
-              <span className="text-slate-300 font-medium">{expense.category || 'General'}</span>
-              <span>•</span>
-            </>
-          )}
-          <span>
-            💰 por <span className="text-slate-200 font-medium">{payerName}</span>
-          </span>
-
-          {groupBy !== 'date' && groupBy !== 'both' && (
+      {/* Fila principal del gasto */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex-1 min-w-0 pr-2">
+          <p className="text-sm font-semibold text-white truncate">{expense.title}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400 mt-1">
+            {groupBy !== 'category' && groupBy !== 'both' && (
+              <>
+                <span className="text-slate-300 font-medium">{expense.category || 'General'}</span>
+                <span>•</span>
+              </>
+            )}
             <span>
-              el <span className="text-slate-200 font-medium">
-                {new Date(expense.date || expense.createdAt).toLocaleDateString()}
-              </span>
+              💰 por <span className="text-slate-200 font-medium">{payerName}</span>
             </span>
-          )}
 
-          <span>
-            a las <span className="text-slate-200 font-medium">{formatTimeHHMM(expense.createdAt || expense.date)}</span>
-          </span>
+            {groupBy !== 'date' && groupBy !== 'both' && (
+              <span>
+                el <span className="text-slate-200 font-medium">
+                  {new Date(expense.date || expense.createdAt).toLocaleDateString()}
+                </span>
+              </span>
+            )}
 
-          {/* Botón interactivo con popover de desglose */}
-          {!expense.isPersonal && expense.splitBetween?.length > 0 && (
-            <div className="relative inline-block" ref={splitPopoverRef}>
+            <span>
+              a las <span className="text-slate-200 font-medium">{formatTimeHHMM(expense.createdAt || expense.date)}</span>
+            </span>
+
+            {/* Botón interactivo para alternar el acordeón */}
+            {!expense.isPersonal && expense.splitBetween?.length > 0 && (
               <button
                 type="button"
-                onClick={() => setShowSplitPopover((prev) => !prev)}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 border border-indigo-700/50 text-indigo-300 font-medium text-[11px] hover:bg-indigo-900/80 hover:text-indigo-200 transition-colors cursor-pointer"
-                title="Ver participantes de este gasto"
+                onClick={() => setIsSplitExpanded((prev) => !prev)}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-medium text-[11px] transition-all cursor-pointer ${
+                  isSplitExpanded
+                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                    : 'bg-indigo-950/80 border-indigo-700/50 text-indigo-300 hover:bg-indigo-900/80 hover:text-indigo-200'
+                }`}
+                title={isSplitExpanded ? 'Ocultar participantes' : 'Ver participantes de este gasto'}
               >
                 <span>➗ {expense.splitBetween.length}</span>
+                {isSplitExpanded ? (
+                  <ChevronUp className="w-3 h-3 text-indigo-200" />
+                ) : (
+                  <ChevronDown className="w-3 h-3 text-indigo-300" />
+                )}
               </button>
+            )}
+          </div>
 
-              {showSplitPopover && (
-                <div className="absolute left-0 bottom-full mb-1.5 z-40 w-56 rounded-xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 p-2.5 shadow-2xl space-y-1.5 animate-in fade-in zoom-in-95">
-                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 text-[11px] font-semibold text-slate-300">
-                    <span className="flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-indigo-400" />
-                      Repartido entre:
-                    </span>
-                    <span className="text-slate-400 font-mono text-[10px]">
-                      {expense.splitBetween.length} pers.
-                    </span>
-                  </div>
-
-                  <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
-                    {expense.splitBetween.map((splitItem, idx) => {
-                      const memberId = extractEntityId(splitItem.user || splitItem);
-                      const memberIsCurrent = isMe ? isMe(splitItem.user, memberId) : false;
-
-                      // Resolución de nombre tolerante a formato subdocumento { user, status } o directo
-                      let memberName = splitItem.user?.name || splitItem.user?.email;
-                      if (!memberName && project?.members) {
-                        const found = project.members.find((m) => {
-                          const u = m?.user || m;
-                          return extractEntityId(u) === memberId;
-                        });
-                        const foundUser = found?.user || found;
-                        if (foundUser) memberName = foundUser.name || foundUser.email;
-                      }
-                      if (!memberName) memberName = `Usuario (${memberId.slice(-4)})`;
-
-                      const itemShare = Number(
-                        splitItem.share ?? (totalAmount / expense.splitBetween.length)
-                      );
-
-                      return (
-                        <div
-                          key={`split-detail-${memberId}-${idx}`}
-                          className={`flex items-center justify-between text-xs py-1 px-1.5 rounded-md ${
-                            memberIsCurrent ? 'bg-indigo-950/70 border border-indigo-800/60' : 'bg-slate-950/40'
-                          }`}
-                        >
-                          <span className={`truncate mr-2 ${memberIsCurrent ? 'font-semibold text-indigo-300' : 'text-slate-300'}`}>
-                            {memberIsCurrent ? 'Tú' : memberName}
-                          </span>
-                          <span className="font-mono text-[11px] font-medium text-emerald-400 shrink-0">
-                            {itemShare.toFixed(2)} {currency}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+          {actionFeedback?.type === 'error' && (
+            <div className="mt-2 text-xs text-red-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{actionFeedback.text}</span>
             </div>
           )}
         </div>
 
-        {actionFeedback?.type === 'error' && (
-          <div className="mt-2 text-xs text-red-400 flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>{actionFeedback.text}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-        {isConfirmingDelete ? (
-          <div className="flex items-center gap-2 bg-slate-950/90 border border-red-900/60 px-2.5 py-1.5 rounded-lg shadow-inner">
-            <span className="text-xs text-red-300 font-medium mr-1">¿Eliminar?</span>
-            <Button
-              size="sm"
-              variant="danger"
-              isLoading={isProcessing}
-              icon={Check}
-              onClick={handleDelete}
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={isProcessing}
-              icon={X}
-              onClick={() => setIsConfirmingDelete(false)}
-            />
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={Pencil}
-              title="Editar gasto"
-              onClick={handleStartEditing}
-              className="px-1.5 py-1.5 text-slate-500 hover:text-indigo-400 hover:bg-slate-900/60"
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={Trash2}
-              title="Eliminar gasto"
-              onClick={() => setIsConfirmingDelete(true)}
-              className="px-1.5 py-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900/60"
-            />
-          </div>
-        )}
-
-        {/* Zona de importe */}
-        <div className="text-right flex flex-col items-end justify-center min-w-[75px]">
-          {expense.isPersonal ? (
-            <span className="text-sm font-bold text-amber-400">
-              {totalAmount.toFixed(2)} {currency}
-            </span>
+        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+          {isConfirmingDelete ? (
+            <div className="flex items-center gap-2 bg-slate-950/90 border border-red-900/60 px-2.5 py-1.5 rounded-lg shadow-inner">
+              <span className="text-xs text-red-300 font-medium mr-1">¿Eliminar?</span>
+              <Button
+                size="sm"
+                variant="danger"
+                isLoading={isProcessing}
+                icon={Check}
+                onClick={handleDelete}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isProcessing}
+                icon={X}
+                onClick={() => setIsConfirmingDelete(false)}
+              />
+            </div>
           ) : (
-            <>
-              <span className="text-sm font-bold text-emerald-400">
-                {computedShare.toFixed(2)} {currency}
-              </span>
-              <span className="text-[11px] font-medium text-slate-400">
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Pencil}
+                title="Editar gasto"
+                onClick={handleStartEditing}
+                className="px-1.5 py-1.5 text-slate-500 hover:text-indigo-400 hover:bg-slate-900/60"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Trash2}
+                title="Eliminar gasto"
+                onClick={() => setIsConfirmingDelete(true)}
+                className="px-1.5 py-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900/60"
+              />
+            </div>
+          )}
+
+          {/* Zona de importe */}
+          <div className="text-right flex flex-col items-end justify-center min-w-[75px]">
+            {expense.isPersonal ? (
+              <span className="text-sm font-bold text-amber-400">
                 {totalAmount.toFixed(2)} {currency}
               </span>
-            </>
-          )}
+            ) : (
+              <>
+                <span className="text-sm font-bold text-emerald-400">
+                  {computedShare.toFixed(2)} {currency}
+                </span>
+                <span className="text-[11px] font-medium text-slate-400">
+                  {totalAmount.toFixed(2)} {currency}
+                </span>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Acordeón Inline: Desglose de participantes */}
+      {isSplitExpanded && !expense.isPersonal && expense.splitBetween?.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium">
+            <span className="flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Reparto entre participantes ({expense.splitBetween.length}):</span>
+            </span>
+            <span className="text-slate-500 font-mono text-[10px]">
+              Total: {totalAmount.toFixed(2)} {currency}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5">
+            {expense.splitBetween.map((splitItem, idx) => {
+              const memberId = extractEntityId(splitItem.user || splitItem);
+              const memberIsCurrent = isMe ? isMe(splitItem.user, memberId) : false;
+
+              let memberName = splitItem.user?.name || splitItem.user?.email;
+              if (!memberName && project?.members) {
+                const found = project.members.find((m) => {
+                  const u = m?.user || m;
+                  return extractEntityId(u) === memberId;
+                });
+                const foundUser = found?.user || found;
+                if (foundUser) memberName = foundUser.name || foundUser.email;
+              }
+              if (!memberName) memberName = `Usuario (${memberId.slice(-4)})`;
+
+              const itemShare = Number(
+                splitItem.share ?? (totalAmount / (expense.splitBetween.length || 1))
+              );
+
+              return (
+                <div
+                  key={`split-detail-${memberId}-${idx}`}
+                  className={`flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg transition-colors ${
+                    memberIsCurrent
+                      ? 'bg-indigo-950/80 border border-indigo-700/60'
+                      : 'bg-slate-950/60 border border-slate-800/60'
+                  }`}
+                >
+                  <span className={`truncate mr-2 ${memberIsCurrent ? 'font-semibold text-indigo-300' : 'text-slate-300'}`}>
+                    {memberIsCurrent ? 'Tú' : memberName}
+                  </span>
+                  <span className="font-mono text-[11px] font-semibold text-emerald-400 shrink-0">
+                    {itemShare.toFixed(2)} {currency}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
