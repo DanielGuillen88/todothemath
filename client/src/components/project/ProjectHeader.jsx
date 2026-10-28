@@ -57,9 +57,9 @@ export default function ProjectHeader({ project, metrics, currentUser }) {
     : 'Al día';
 
   const balanceDisplay = netBalance > 0.01
-    ? `+${netBalance.toFixed(0)}`
+    ? `+${netBalance.toFixed(0)} ${currency}`
     : netBalance < -0.01
-    ? `${Math.abs(netBalance).toFixed(0)} {currency}`
+    ? `${Math.abs(netBalance).toFixed(0)} ${currency}`
     : '💪🏻🤑';
 
   return (
