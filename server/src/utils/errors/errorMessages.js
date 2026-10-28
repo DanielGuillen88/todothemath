@@ -22,6 +22,7 @@ export const ERROR_MESSAGES = {
         NOT_MATCHING_NAME: '❌ El nombre introducido no coincide con el nombre del proyecto',
         PENDING_INVITATION: '📬 El usuario ya tiene una invitación pendiente de aceptar.',
         NOT_INVITATION: '📭 No hay ninguna invitación pendiente que rechazar.',
+        PENDING_SETTLEMENTS: 'No se puede expulsar a este participante porque figura como pagador de gastos registrados. Edita o elimina sus gastos primero.',
     },
     EXPENSE: {
         INVALID_AMOUNT: '💶 Debes indicar un concepto válido y superior a 0',
@@ -35,7 +36,6 @@ export const ERROR_MESSAGES = {
         PROJECT_NOT_FOUND: '🙃 Proyecto o gasto no encontrado',
         SETTLEMENT_NOT_FOUND: '🙃 Liquidación no encontrada',
         SETTLEMENT_FORBIDDEN: '⛔️ No tienes permiso para revertir esta liquidación',
-
     },
     COMMON: {
         ROUTE_NOT_FOUND: '⛔️ Ruta no encontrada',
