@@ -5,11 +5,18 @@ import { Project } from '../../models/Project.js';
 // @access  Private
 export const getProjects = async (req, res, next) => {
   try {
+    const userId = req.user._id;
+
     const projects = await Project.find({
-      $or: [{ owner: req.user._id }, { members: req.user._id }]
+      $or: [
+        { owner: userId },
+        { 'members.user': userId }, // 👈 Nueva estructura con subdocumentos
+        { members: userId }         // Fallback para colecciones no migradas
+      ]
     })
       .populate('owner', 'name email')
-      .populate('members', 'name email')
+      .populate('members.user', 'name email') // 👈 Poblar nombre y email de participantes
+      .populate('members', 'name email')     // Fallback
       .sort({ createdAt: -1 });
 
     res.status(200).json({

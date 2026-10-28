@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { CreditCard, Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
 import { Button } from '../ui';
@@ -19,7 +19,6 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
     amount: '',
     category: 'Otros',
     date: new Date().toISOString().split('T')[0],
-    // isPersonal: false, // 👈 Compartido por defecto en proyectos de grupo
     isPersonal: true, // 👈 personal por defecto
     paidBy: currentUserId,
   });
@@ -29,15 +28,28 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
-  // Sincronizar participantes disponibles y asegurar pagador
+  // Obtiene únicamente los IDs de miembros activos (excluye pending)
+  const getActiveMemberIds = useCallback(() => {
+    if (!project?.members || !Array.isArray(project.members)) return [];
+    return project.members
+      .filter((m) => m?.status !== 'pending')
+      .map((m) => {
+        const userData = m?.user || m;
+        return String(extractEntityId(userData) || userData?._id || userData?.id || userData || '');
+      })
+      .filter(Boolean);
+  }, [project?.members]);
+
+  // Sincronizar participantes activos disponibles y asegurar pagador
   useEffect(() => {
-    if (project?.members && project.members.length > 0) {
-      setSelectedMembers(project.members.map((m) => String(extractEntityId(m))));
+    const activeIds = getActiveMemberIds();
+    if (activeIds.length > 0) {
+      setSelectedMembers(activeIds);
     }
     if (currentUserId) {
       setForm((prev) => ({ ...prev, paidBy: currentUserId }));
     }
-  }, [project, currentUserId]);
+  }, [getActiveMemberIds, currentUserId]);
 
   const handleFieldChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -89,9 +101,8 @@ export default function ExpenseForm({ project, currentUser, onSubmit }) {
       setFeedback({ type: 'success', text: 'Gasto registrado con éxito' });
       setForm(getInitialForm());
 
-      if (project?.members) {
-        setSelectedMembers(project.members.map((m) => String(extractEntityId(m))));
-      }
+      // Restablecer seleccionados únicamente con miembros activos
+      setSelectedMembers(getActiveMemberIds());
 
       setTimeout(() => setFeedback(null), 2000);
     } catch (err) {

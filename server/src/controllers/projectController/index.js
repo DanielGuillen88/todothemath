@@ -12,3 +12,7 @@ export { getProjects } from './getProjects.js';
 export { updateProject } from './updateProject.js';
 // Eliminar un miembro de un proyecto
 export { removeMember } from './removeMember.js';
+// Aceptar invitación a un proyecto
+export { acceptInvitation } from './acceptInvitation.js'
+// Rechazar invitación a un proyecto
+export { rejectInvitation } from './rejectInvitation.js'

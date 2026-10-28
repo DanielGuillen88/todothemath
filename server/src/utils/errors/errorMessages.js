@@ -20,6 +20,8 @@ export const ERROR_MESSAGES = {
         ALREADY_MEMBER: '‼️ El usuario ya forma parte de este proyecto',
         NOT_MEMBER: '🙈 El usuario no forma parte de este proyecto',
         NOT_MATCHING_NAME: '❌ El nombre introducido no coincide con el nombre del proyecto',
+        PENDING_INVITATION: '📬 El usuario ya tiene una invitación pendiente de aceptar.',
+        NOT_INVITATION: '📭 No hay ninguna invitación pendiente que rechazar.',
     },
     EXPENSE: {
         INVALID_AMOUNT: '💶 Debes indicar un concepto válido y superior a 0',

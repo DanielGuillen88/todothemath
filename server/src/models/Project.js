@@ -1,62 +1,96 @@
 import mongoose from 'mongoose';
 
-const projectSchema = new mongoose.Schema(
+const MemberSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    role: {
+      type: String,
+      enum: ['owner', 'member'],
+      default: 'member',
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'rejected'],
+      default: 'pending',
+    },
+    invitedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    joinedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
+const TYPE_MAP = {
+  trip: 'Viaje',
+  viaje: 'Viaje',
+  home: 'Hogar',
+  hogar: 'Hogar',
+  event: 'Evento',
+  evento: 'Evento',
+  general: 'General',
+  couple: 'Pareja',
+  pareja: 'Pareja',
+};
+
+const ProjectSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, 'El título del proyecto es obligatorio'],
+      required: [true, 'El título del proyecto es obligatorio.'],
       trim: true,
-      maxlength: [100, 'El título no puede exceder 100 caracteres']
+      maxlength: [100, 'El título no puede exceder los 100 caracteres.'],
     },
     description: {
       type: String,
       trim: true,
-      default: ''
+      default: '',
     },
     type: {
       type: String,
-      required: [true, 'El tipo de proyecto es obligatorio'],
-      enum: ['trip', 'event', 'renovation', 'other'],
-      default: 'trip'
-    },
-    budget: {
-      type: Number,
-      required: [true, 'El presupuesto estimado es obligatorio'],
-      min: [0, 'El presupuesto no puede ser negativo'],
-      default: 0
+      enum: [
+        'Viaje', 'Hogar', 'Evento', 'General', 'Pareja',
+        'trip', 'home', 'event', 'general', 'couple'
+      ],
+      default: 'General',
+      set: (val) => {
+        if (!val) return 'General';
+        const normalized = String(val).toLowerCase().trim();
+        return TYPE_MAP[normalized] || val;
+      },
     },
     currency: {
       type: String,
-      default: 'EUR',
-      uppercase: true
+      default: '€',
+      trim: true,
+    },
+    budget: {
+      type: Number,
+      default: 0,
+      min: [0, 'El presupuesto no puede ser negativo.'],
     },
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true
+      required: true,
     },
-    // settlementMode: {
-    //   type: String,
-    //   enum: ['simplified', 'direct'],
-    //   default: 'direct',
-    // },
-    members: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-      }
-    ]
+    members: [MemberSchema],
   },
   {
     timestamps: true,
-    toJSON: {
-      transform(doc, ret) {
-        ret.id = ret._id;
-        delete ret._id;
-        delete ret.__v;
-      }
-    }
   }
 );
 
-export const Project = mongoose.model('Project', projectSchema);
+// Índice compuesto para acelerar búsquedas de proyectos por usuario
+ProjectSchema.index({ owner: 1 });
+ProjectSchema.index({ 'members.user': 1, 'members.status': 1 });
+
+export const Project = mongoose.model('Project', ProjectSchema);

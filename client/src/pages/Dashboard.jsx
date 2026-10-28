@@ -1,12 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getProjects, updateProjectById } from '../services/projectService';
-import { FolderKanban, Plus, X, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
+import { 
+  getProjects, 
+  updateProjectById, 
+  acceptInvitation, 
+  rejectInvitation 
+} from '../services/projectService';
+import { 
+  FolderKanban, 
+  Plus, 
+  X, 
+  AlertCircle, 
+  Check, 
+  CheckCircle2, 
+  Mail, 
+  Clock 
+} from 'lucide-react';
 import { Button } from '../components/ui';
 import ProjectCard from '../components/project/ProjectCard';
 import DeleteProjectModal from '../components/project/DeleteProjectModal';
 import ProjectFormFields from '../components/project/ProjectFormFields';
+import { extractEntityId } from '../utils/expenseHelpers';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -21,7 +36,6 @@ export default function Dashboard() {
     budget: '',
     currency: 'EUR',
     type: 'trip',
-    // settlementMode: 'direct',
   });
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -32,6 +46,17 @@ export default function Dashboard() {
 
   // Estado para modal de eliminación
   const [deletingProject, setDeletingProject] = useState(null);
+
+  // Estado para acciones de invitación en curso
+  const [invitationActionId, setInvitationActionId] = useState(null);
+
+  const currentUserId = String(
+    user?._id || user?.id || user?.user?._id || user?.user?.id || extractEntityId(user) || ''
+  ).trim();
+
+  const currentUserEmail = String(
+    user?.email || user?.user?.email || ''
+  ).toLowerCase().trim();
 
   const fetchProjects = async () => {
     try {
@@ -50,7 +75,6 @@ export default function Dashboard() {
     fetchProjects();
   }, []);
 
-  // Timer para limpiar el toast automáticamente
   useEffect(() => {
     if (!toastMessage) return;
     const timer = setTimeout(() => {
@@ -58,6 +82,76 @@ export default function Dashboard() {
     }, 3000);
     return () => clearTimeout(timer);
   }, [toastMessage]);
+
+  // Clasificación de proyectos: Invitaciones pendientes vs Proyectos activos
+  const { pendingInvitations, activeProjects } = useMemo(() => {
+    const pending = [];
+    const active = [];
+
+    projects.forEach((p) => {
+      const ownerId = String(p.owner?._id || p.owner?.id || p.owner || '').trim();
+      const ownerEmail = String(p.owner?.email || '').toLowerCase().trim();
+
+      const isOwner = Boolean(
+        (currentUserId && ownerId && currentUserId === ownerId) ||
+        (currentUserEmail && ownerEmail && currentUserEmail === ownerEmail)
+      );
+
+      // Si eres el owner, el proyecto siempre es activo para ti
+      if (isOwner) {
+        active.push(p);
+        return;
+      }
+
+      // Buscar tu entrada en members
+      const myMemberEntry = Array.isArray(p.members)
+        ? p.members.find((m) => {
+            const mUser = m?.user || m;
+            const mId = String(mUser?._id || mUser?.id || mUser || '').trim();
+            const mEmail = String(mUser?.email || '').toLowerCase().trim();
+            return (
+              (currentUserId && mId && currentUserId === mId) ||
+              (currentUserEmail && mEmail && currentUserEmail === mEmail)
+            );
+          })
+        : null;
+
+      if (myMemberEntry && myMemberEntry.status === 'pending') {
+        pending.push(p);
+      } else {
+        // Miembro aceptado o compatibilidad con esquemas anteriores
+        active.push(p);
+      }
+    });
+
+    return { pendingInvitations: pending, activeProjects: active };
+  }, [projects, currentUserId, currentUserEmail]);
+
+  const handleAcceptInvite = async (projectId) => {
+    setInvitationActionId(projectId);
+    try {
+      await acceptInvitation(projectId);
+      await fetchProjects();
+      setToastMessage('✅ Te has unido al proyecto');
+    } catch (err) {
+      console.error('Error al aceptar invitación:', err);
+    } finally {
+      setInvitationActionId(null);
+    }
+  };
+
+  const handleRejectInvite = async (projectId) => {
+    setInvitationActionId(projectId);
+    try {
+      await rejectInvitation(projectId);
+      await fetchProjects();
+      setToastMessage('Invitación rechazada');
+    } catch (err) {
+      console.error('Error al rechazar invitación:', err);
+    } finally {
+      setInvitationActionId(null);
+    }
+  };
 
   const openEditModal = (p) => {
     const projectId = String(p?._id || p?.id || '');
@@ -68,7 +162,6 @@ export default function Dashboard() {
       budget: p.budget !== undefined && p.budget !== null ? p.budget : '',
       currency: p.currency || 'EUR',
       type: p.type || 'trip',
-      // settlementMode: p.settlementMode || 'direct',
     });
     setErrorMsg('');
     setIsConfirmingSave(false);
@@ -107,7 +200,6 @@ export default function Dashboard() {
         budget: editForm.budget !== '' ? Number(editForm.budget) : 0,
         currency: editForm.currency,
         type: editForm.type || 'trip',
-        // settlementMode: editForm.settlementMode || 'direct',
       });
 
       const updatedTitle = editForm.title.trim();
@@ -152,6 +244,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Cabecera Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Mis Proyectos</h1>
@@ -166,10 +259,68 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {projects.length === 0 ? (
+      {/* Bandeja de Invitaciones Pendientes */}
+      {pendingInvitations.length > 0 && (
+        <div className="bg-slate-900/90 border border-amber-900/50 rounded-2xl p-5 mb-8 shadow-xl">
+          <div className="flex items-center gap-2 mb-3">
+            <Mail className="w-4 h-4 text-amber-400" />
+            <h2 className="text-sm font-bold text-amber-300">
+              Invitaciones pendientes ({pendingInvitations.length})
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {pendingInvitations.map((proj) => {
+              const pId = String(proj._id || proj.id);
+              const isActionRunning = invitationActionId === pId;
+
+              return (
+                <div
+                  key={`pending-${pId}`}
+                  className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white text-sm truncate">{proj.title || proj.name}</p>
+                    <p className="text-xs text-slate-400 truncate flex items-center gap-1 mt-0.5">
+                      <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                      <span>Invitado por {proj.owner?.name || proj.owner?.email || 'Organizador'}</span>
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={X}
+                      disabled={isActionRunning}
+                      onClick={() => handleRejectInvite(pId)}
+                      className="text-slate-400 hover:text-red-400 px-2.5 py-1 text-xs"
+                    >
+                      Rechazar
+                    </Button>
+                    <Button
+                      size="sm"
+                      icon={Check}
+                      isLoading={isActionRunning}
+                      disabled={isActionRunning}
+                      onClick={() => handleAcceptInvite(pId)}
+                      className="text-xs"
+                    >
+                      Aceptar
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Lista de Proyectos Activos */}
+      {activeProjects.length === 0 ? (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
           <FolderKanban className="w-12 h-12 mx-auto text-slate-600 mb-3" />
-          <p className="text-base font-medium text-white mb-1">Aún no tienes ningún proyecto</p>
+          <p className="text-base font-medium text-white mb-1">Aún no tienes ningún proyecto activo</p>
           <p className="text-xs text-slate-500 mb-6">Crea uno nuevo o pide a un amigo que te invite por correo.</p>
           <Link
             to="/projects/new"
@@ -180,7 +331,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((p, idx) => (
+          {activeProjects.map((p, idx) => (
             <ProjectCard
               key={p?._id || p?.id || idx}
               project={p}
@@ -200,7 +351,7 @@ export default function Dashboard() {
         onSuccess={handleDeletedSuccess}
       />
 
-      {/* Modal de Edición con campos compartidos y confirmación */}
+      {/* Modal de Edición */}
       {editingProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative my-8">

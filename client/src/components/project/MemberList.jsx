@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Users, UserPlus, Crown, CheckCircle2, AlertCircle, UserMinus, AlertTriangle } from 'lucide-react';
+import { Users, UserPlus, Crown, CheckCircle2, AlertCircle, UserMinus, AlertTriangle, Clock } from 'lucide-react';
 import { Input, Button } from '../ui';
 import { extractEntityId } from '../../utils/expenseHelpers';
 
@@ -16,14 +16,16 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
   // Extracción de identificadores
   const currentUserId = String(
     currentUser?._id || currentUser?.id || currentUser?.user?._id || currentUser?.user?.id || extractEntityId(currentUser) || ''
-  );
+  ).trim();
+
   const currentUserEmail = String(
     currentUser?.email || currentUser?.user?.email || ''
   ).toLowerCase().trim();
 
   const ownerId = String(
     project?.owner?._id || project?.owner?.id || project?.owner || ''
-  );
+  ).trim();
+
   const ownerEmail = String(
     project?.owner?.email || ''
   ).toLowerCase().trim();
@@ -56,9 +58,9 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
     setIsInviting(true);
     try {
       await onAddMember(emailToValidate);
-      setInviteMsg({ type: 'success', text: 'Participante añadido con éxito.' });
+      setInviteMsg({ type: 'success', text: 'Invitación enviada. Pendiente de que el usuario la acepte.' });
       setInviteEmail('');
-      setTimeout(() => setInviteMsg({ text: '', type: '' }), 3000);
+      setTimeout(() => setInviteMsg({ text: '', type: '' }), 4000);
     } catch (err) {
       setInviteMsg({
         type: 'error',
@@ -87,7 +89,9 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
     setInviteMsg({ text: '', type: '' });
 
     try {
-      const memberId = extractEntityId(targetMember) || targetMember._id || targetMember.id;
+      const memberUserData = targetMember?.user || targetMember;
+      const memberId = extractEntityId(memberUserData) || memberUserData._id || memberUserData.id;
+
       await onRemoveMember(memberId);
       setInviteMsg({ type: 'success', text: 'Participante expulsado del proyecto.' });
       handleCloseRemoveModal();
@@ -135,7 +139,7 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
               icon={UserPlus}
               className="shrink-0 h-[34px]"
             >
-              Añadir
+              Invitar
             </Button>
           </div>
 
@@ -161,9 +165,15 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
       {/* Lista de Miembros */}
       <div className="divide-y divide-slate-800/60 max-h-64 overflow-y-auto pr-1">
         {project?.members?.map((m, idx) => {
-          const memberId = String(m?._id || m?.id || (typeof m === 'string' ? m : '') || extractEntityId(m));
-          const memberEmail = String(m?.email || '').toLowerCase().trim();
-          
+          // Soporte tanto para subdocumento { user, status } como usuario directo
+          const memberUser = m?.user || m;
+          const memberId = String(
+            memberUser?._id || memberUser?.id || (typeof memberUser === 'string' ? memberUser : '') || extractEntityId(memberUser)
+          ).trim();
+
+          const memberEmail = String(memberUser?.email || '').toLowerCase().trim();
+          const memberStatus = m?.status || 'accepted';
+
           const isMemberOwner = Boolean(
             (ownerId && memberId && ownerId === memberId) ||
             (ownerEmail && memberEmail && ownerEmail === memberEmail)
@@ -173,8 +183,8 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
             (currentUserId && memberId && currentUserId === memberId) ||
             (currentUserEmail && memberEmail && currentUserEmail === memberEmail)
           );
-          
-          const baseName = m?.name || (memberEmail ? memberEmail.split('@')[0] : `Usuario (${memberId.slice(-4)})`);
+
+          const baseName = memberUser?.name || (memberEmail ? memberEmail.split('@')[0] : `Usuario (${memberId.slice(-4)})`);
           const canDeleteThisMember = isOwner && !isMemberOwner && !isCurrent;
 
           return (
@@ -195,21 +205,29 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
                       </span>
                     )}
                   </p>
-                  <p className="text-[11px] text-slate-500 truncate">{m?.email || 'Sin correo'}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{memberUser?.email || 'Sin correo'}</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
-                {isMemberOwner && (
+                {isMemberOwner ? (
                   <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-950/40 border border-amber-900/50 px-2 py-0.5 rounded">
                     <Crown className="w-3 h-3 text-amber-400" /> Creador
+                  </span>
+                ) : memberStatus === 'pending' ? (
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-amber-300 bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-full">
+                    <Clock className="w-2.5 h-2.5" /> Pendiente
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-emerald-400 bg-emerald-950/50 border border-emerald-900/60 px-2 py-0.5 rounded-full">
+                    Activo
                   </span>
                 )}
 
                 {canDeleteThisMember && (
                   <button
                     type="button"
-                    title="Expulsar del proyecto"
+                    title={memberStatus === 'pending' ? 'Cancelar invitación' : 'Expulsar del proyecto'}
                     onClick={() => handleOpenRemoveModal(m)}
                     className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-800/80 transition-colors cursor-pointer"
                   >
@@ -222,7 +240,7 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
         })}
       </div>
 
-      {/* Modal de confirmación reforzada */}
+      {/* Modal de confirmación */}
       {targetMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
@@ -236,9 +254,9 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
             <p className="text-xs text-slate-300 leading-relaxed">
               Estás a punto de expulsar a{' '}
               <strong className="text-white font-semibold">
-                {targetMember.name || targetMember.email}
+                {targetMember?.user?.name || targetMember?.user?.email || targetMember?.name || targetMember?.email}
               </strong>{' '}
-              del proyecto. Mejor deshaz los pagos en la pestaña de liquidaciones primero.
+              del proyecto.
             </p>
 
             <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1">

@@ -14,41 +14,32 @@ export default function ExpenseFields({
 }) {
   const isShared = !values.isPersonal;
 
+  // 1. Modifica EXCLUSIVAMENTE isPersonal sin tocar la categoría seleccionada
   const handleSharedCheckboxChange = (e) => {
     const willBeShared = e.target.checked;
     onChange('isPersonal', !willBeShared);
-
-    if (!willBeShared && values.category !== 'Personales') {
-      onChange('category', 'Personales');
-    } else if (willBeShared && values.category === 'Personales') {
-      onChange('category', 'Otros');
-    }
   };
 
-  // Manejo tolerante: soporta eventos estándar (e.target.value) y llamadas directas (value)
+  // 2. Modifica EXCLUSIVAMENTE la categoría sin tocar isPersonal
   const handleCategoryChange = (eOrValue) => {
     const newCategory = (eOrValue && typeof eOrValue === 'object' && eOrValue.target)
       ? eOrValue.target.value
       : eOrValue;
 
     onChange('category', newCategory);
-
-    if (newCategory === 'Personales' && isShared) {
-      onChange('isPersonal', true);
-    } else if (newCategory !== 'Personales' && values.isPersonal) {
-      onChange('isPersonal', false);
-    }
   };
 
   const numericAmount = Number(values.amount) || 0;
   const count = selectedMembers.length || 1;
   const perPersonShare = (numericAmount / count).toFixed(2);
 
-  // Formato dual: objetos { value, label } por si el Select interno los requiere, o array plano
   const selectOptions = EXPENSE_CATEGORIES.map((cat) => ({
     value: cat,
     label: cat,
   }));
+
+  // Filtramos solo los miembros confirmados (excluye pendientes de aceptar invitación)
+  const activeMembers = (project?.members || []).filter((m) => m?.status !== 'pending');
 
   return (
     <>
@@ -121,8 +112,8 @@ export default function ExpenseFields({
         </div>
       </div>
 
-      {/* Selector de reparto entre miembros */}
-      {showSplitSelector && isShared && project?.members && project.members.length > 1 && (
+      {/* Selector de reparto entre miembros activos */}
+      {showSplitSelector && isShared && activeMembers.length > 1 && (
         <div className="mt-3.5 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-400">Dividir gasto entre:</span>
@@ -132,10 +123,11 @@ export default function ExpenseFields({
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            {project.members.map((m, idx) => {
-              const memberId = extractEntityId(m);
+            {activeMembers.map((m, idx) => {
+              const memberUserData = m?.user || m;
+              const memberId = extractEntityId(memberUserData) || String(memberUserData?._id || memberUserData?.id || memberUserData || '');
               const isIncluded = selectedMembers.some((mid) => extractEntityId(mid) === memberId);
-              const memberName = m?.name || `Usuario (${memberId.slice(-4)})`;
+              const memberName = memberUserData?.name || (memberUserData?.email ? memberUserData.email.split('@')[0] : `Usuario (${memberId.slice(-4)})`);
               const isCurrent = memberId === extractEntityId(currentUser);
 
               return (

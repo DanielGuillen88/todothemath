@@ -7,24 +7,32 @@ import { ERROR_MESSAGES, BadRequestError } from '../../utils/errors/index.js';
 export const createProject = async (req, res, next) => {
   try {
     const { title, description, budget, currency, type } = req.body;
+    const currentUserId = req.user._id;
 
     if (!title || !title.trim()) {
       return next(new BadRequestError(ERROR_MESSAGES.PROJECT.TITLE_REQUIRED));
     }
 
     const project = await Project.create({
-      title: title.trim(),
-      description: description ? description.trim() : '',
-      budget: budget !== undefined && budget !== '' ? Number(budget) : 0,
-      currency: currency || 'EUR',
-      type: type || 'trip',
-      owner: req.user._id,
-      members: [req.user._id], // El creador entra automáticamente como participante
-    });
+          title,
+          description,
+          type,
+          currency,
+          budget,
+          owner: currentUserId,
+          members: [
+            {
+              user: currentUserId,
+              role: 'owner',
+              status: 'accepted',
+              joinedAt: new Date(),
+            },
+          ],
+        });
 
     const populatedProject = await Project.findById(project._id)
       .populate('owner', 'name email')
-      .populate('members', 'name email');
+      .populate('members.user', 'name email');
 
     res.status(201).json({
       status: 'success',

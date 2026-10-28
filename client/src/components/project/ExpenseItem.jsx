@@ -80,9 +80,16 @@ export default function ExpenseItem({
     const existingPayerId = extractEntityId(expense.paidBy);
     const currentId = extractEntityId(currentUser);
 
+    // Obtener miembros activos del proyecto (excluyendo pendientes de invitación)
+    const activeProjectMemberIds = (project?.members || [])
+      .filter((m) => m?.status !== 'pending')
+      .map((m) => extractEntityId(m?.user || m))
+      .filter(Boolean);
+
+    // Si ya tiene split definido, usarlo filtrando solo IDs válidos; si no, inicializar con miembros activos
     const currentSplitMembers = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
-      ? expense.splitBetween.map((s) => extractEntityId(s.user || s))
-      : (project?.members || []).map((m) => extractEntityId(m));
+      ? expense.splitBetween.map((s) => extractEntityId(s.user || s)).filter(Boolean)
+      : activeProjectMemberIds;
 
     setSelectedMembers(currentSplitMembers);
 
@@ -341,13 +348,15 @@ export default function ExpenseItem({
                       const memberId = extractEntityId(splitItem.user || splitItem);
                       const memberIsCurrent = isMe ? isMe(splitItem.user, memberId) : false;
 
-                      // Nombres de miembros que entran en reparto
+                      // Resolución de nombre tolerante a formato subdocumento { user, status } o directo
                       let memberName = splitItem.user?.name || splitItem.user?.email;
                       if (!memberName && project?.members) {
-                        const found = project.members.find(
-                          (m) => extractEntityId(m) === memberId
-                        );
-                        if (found) memberName = found.name || found.email;
+                        const found = project.members.find((m) => {
+                          const u = m?.user || m;
+                          return extractEntityId(u) === memberId;
+                        });
+                        const foundUser = found?.user || found;
+                        if (foundUser) memberName = foundUser.name || foundUser.email;
                       }
                       if (!memberName) memberName = `Usuario (${memberId.slice(-4)})`;
 
@@ -426,7 +435,7 @@ export default function ExpenseItem({
           </div>
         )}
 
-        {/* Zona de importe limpia */}
+        {/* Zona de importe */}
         <div className="text-right flex flex-col items-end justify-center min-w-[75px]">
           {expense.isPersonal ? (
             <span className="text-sm font-bold text-amber-400">

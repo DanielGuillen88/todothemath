@@ -5,7 +5,9 @@ import {
   getProjectById, 
   updateProject, 
   deleteProject, 
-  addMemberToProject 
+  addMemberToProject,
+  acceptInvitation,
+  rejectInvitation
 } from '../controllers/projectController/index.js';
 import { removeMember } from '../controllers/projectController/removeMember.js';
 import { protect } from '../middlewares/auth.js';
@@ -38,5 +40,9 @@ router
 // 3. Gestión de miembros
 router.post('/:id/members', addMemberToProject);
 router.delete('/:id/members/:memberId', removeMember);
+
+// 4. Respuesta a invitaciones
+router.post('/:id/invitations/accept', acceptInvitation);
+router.post('/:id/invitations/reject', rejectInvitation);
 
 export default router;

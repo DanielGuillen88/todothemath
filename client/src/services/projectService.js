@@ -4,14 +4,14 @@ import api from './api';
 export const createProject = (payload) => 
   api.post('/projects', payload);
 
-// Obtener todos los proyectos
+// Obtener todos los proyectos del usuario (activos e invitaciones)
 export const getProjects = () => api.get('/projects');
 
-// Obtener todos los proyectos del usuario
+// Obtener detalles de un proyecto específico
 export const getProjectById = (projectId) => 
   api.get(`/projects/${projectId}`);
 
-// Añadir un participante al proyecto por email
+// Añadir un participante al proyecto por email (crea invitación pending)
 export const addMemberToProject = async (projectId, email) => {
   const { data } = await api.post(`/projects/${projectId}/members`, { email });
   return data;
@@ -34,5 +34,17 @@ export const deleteProjectById = async (projectId, projectName) => {
   const { data } = await api.delete(`/projects/${projectId}`, {
     data: { projectName },
   });
+  return data;
+};
+
+// Aceptar invitación a un proyecto
+export const acceptInvitation = async (projectId) => {
+  const { data } = await api.post(`/projects/${projectId}/invitations/accept`);
+  return data;
+};
+
+// Rechazar invitación a un proyecto
+export const rejectInvitation = async (projectId) => {
+  const { data } = await api.post(`/projects/${projectId}/invitations/reject`);
   return data;
 };
