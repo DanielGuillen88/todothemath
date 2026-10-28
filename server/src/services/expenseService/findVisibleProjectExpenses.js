@@ -2,8 +2,8 @@ import { Expense } from '../../models/Expense.js';
 
 /**
  * Obtiene los gastos visibles para el usuario autenticado según reglas de privacidad:
- * - Gastos compartidos: visibles para todos los miembros.
- * - Gastos personales: visibles ÚNICAMENTE para quien los pagó.
+ * - Gasto personal: solo lo ve en su lista quien lo pagó/creó.
+ * - Gasto compartido: solo lo ven quienes participan (quien lo pagó o quien está en splitBetween).
  * 
  * @param {string} projectId 
  * @param {string} userId 
@@ -12,10 +12,21 @@ import { Expense } from '../../models/Expense.js';
 export const findVisibleProjectExpenses = async (projectId, userId) => {
   return await Expense.find({
     project: projectId,
-    isSettlement: { $ne: true }, // Excluye liquidaciones antiguas si quedaron en BD
+    isSettlement: { $ne: true },
     $or: [
-      { isPersonal: false },                // Gastos compartidos: visibles para todos
-      { isPersonal: true, paidBy: userId }, // Gastos personales: solo para quien lo pagó
+      // 1. Personal: solo para quien lo pagó
+      { 
+        isPersonal: true, 
+        paidBy: userId 
+      },
+      // 2. Compartido: solo para los involucrados (pagador o participante del reparto)
+      { 
+        isPersonal: false, 
+        $or: [
+          { paidBy: userId },
+          { 'splitBetween.user': userId },
+        ],
+      },
     ],
   })
     .sort({ date: -1, createdAt: -1 })
