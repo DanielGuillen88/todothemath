@@ -112,49 +112,51 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
         </div>
       </h2>
 
-      {/* Formulario de invitación */}
-      <form onSubmit={handleInvite} noValidate className="mb-4">
-        <div className="flex gap-2 items-start">
-          <div className="flex-1">
-            <Input
-              type="email"
-              disabled={isInviting || isRemoving}
-              placeholder="amigo@correo.com"
-              value={inviteEmail}
-              onChange={(e) => {
-                setInviteEmail(e.target.value);
-                if (inviteMsg.text) setInviteMsg({ text: '', type: '' });
-              }}
-            />
+      {/* Formulario de invitación: solo visible si el usuario actual es el creador */}
+      {isOwner && (
+        <form onSubmit={handleInvite} noValidate className="mb-4">
+          <div className="flex gap-2 items-start">
+            <div className="flex-1">
+              <Input
+                type="email"
+                disabled={isInviting || isRemoving}
+                placeholder="amigo@correo.com"
+                value={inviteEmail}
+                onChange={(e) => {
+                  setInviteEmail(e.target.value);
+                  if (inviteMsg.text) setInviteMsg({ text: '', type: '' });
+                }}
+              />
+            </div>
+            <Button
+              type="submit"
+              isLoading={isInviting}
+              disabled={isRemoving}
+              icon={UserPlus}
+              className="shrink-0 h-[34px]"
+            >
+              Añadir
+            </Button>
           </div>
-          <Button
-            type="submit"
-            isLoading={isInviting}
-            disabled={isRemoving}
-            icon={UserPlus}
-            className="shrink-0 h-[34px]"
-          >
-            Añadir
-          </Button>
-        </div>
 
-        {inviteMsg.text && (
-          <div
-            className={`mt-2.5 p-2.5 rounded-lg flex items-center gap-2 text-xs font-medium ${
-              inviteMsg.type === 'success'
-                ? 'bg-emerald-950/40 border border-emerald-800/80 text-emerald-300'
-                : 'bg-red-950/40 border border-red-800/80 text-red-300'
-            }`}
-          >
-            {inviteMsg.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-            ) : (
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-            )}
-            <span>{inviteMsg.text}</span>
-          </div>
-        )}
-      </form>
+          {inviteMsg.text && (
+            <div
+              className={`mt-2.5 p-2.5 rounded-lg flex items-center gap-2 text-xs font-medium ${
+                inviteMsg.type === 'success'
+                  ? 'bg-emerald-950/40 border border-emerald-800/80 text-emerald-300'
+                  : 'bg-red-950/40 border border-red-800/80 text-red-300'
+              }`}
+            >
+              {inviteMsg.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+              )}
+              <span>{inviteMsg.text}</span>
+            </div>
+          )}
+        </form>
+      )}
 
       {/* Lista de Miembros */}
       <div className="divide-y divide-slate-800/60 max-h-64 overflow-y-auto pr-1">
@@ -236,7 +238,7 @@ export default function MemberList({ project, currentUser, onAddMember, onRemove
               <strong className="text-white font-semibold">
                 {targetMember.name || targetMember.email}
               </strong>{' '}
-              del proyecto. Mejor Deshaz los pagos en la pestaña de liquidaciones primero.
+              del proyecto. Mejor deshaz los pagos en la pestaña de liquidaciones primero.
             </p>
 
             <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1">
