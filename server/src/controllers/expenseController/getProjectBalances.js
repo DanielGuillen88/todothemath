@@ -4,6 +4,7 @@ import { Settlement } from '../../models/Settlement.js';
 import { hasProjectAccess } from '../../services/projectService/index.js';
 import { calculateBalances } from '../../services/balanceService.js';
 import { ERROR_MESSAGES, NotFoundError, ForbiddenError } from '../../utils/errors/index.js';
+import { extractUserId } from '../../services/projectService/extractUserId.js';
 
 export const getProjectBalances = async (req, res, next) => {
   try {
@@ -11,6 +12,7 @@ export const getProjectBalances = async (req, res, next) => {
 
     const project = await Project.findById(projectId)
       .populate('owner', 'name email')
+      .populate('members.user', 'name email')
       .populate('members', 'name email');
 
     if (!project) throw new NotFoundError(ERROR_MESSAGES.PROJECT.NOT_FOUND);
@@ -19,12 +21,11 @@ export const getProjectBalances = async (req, res, next) => {
       throw new ForbiddenError(ERROR_MESSAGES.PROJECT.FORBIDDEN_ACCESS);
     }
 
-    // Buscamos gastos ordinarios (filtrando explícitamente posibles viejos settlements) y liquidaciones reales
     const [expenses, settlementsList] = await Promise.all([
       Expense.find({ 
         project: projectId, 
         isPersonal: false,
-        isSettlement: { $ne: true } // 👈 Filtra cualquier gasto que fuera liquidación legacy
+        isSettlement: { $ne: true }
       })
         .populate('paidBy', 'name email')
         .populate('splitBetween.user', 'name email'),
@@ -33,13 +34,31 @@ export const getProjectBalances = async (req, res, next) => {
         .populate('to', 'name email'),
     ]);
 
-    // Aseguramos que el owner esté en la lista si por error no figuraba en members
-    const allMembers = [...(project.members || [])];
-    if (project.owner && !allMembers.some((m) => String(m._id || m) === String(project.owner._id || project.owner))) {
-      allMembers.push(project.owner);
+    // Extraer usuarios activos válidos (excluyendo invitaciones pendientes)
+    const normalizedMembers = [];
+    const seenIds = new Set();
+
+    // 1. Agregar owner
+    if (project.owner) {
+      const ownerId = extractUserId(project.owner);
+      seenIds.add(ownerId);
+      normalizedMembers.push(project.owner);
     }
 
-    const balanceSummary = calculateBalances(expenses, settlementsList, allMembers);
+    // 2. Agregar miembros aceptados
+    if (Array.isArray(project.members)) {
+      project.members.forEach((m) => {
+        if (m?.status === 'pending' || m?.status === 'rejected') return;
+        const userObj = m?.user || m;
+        const uId = extractUserId(userObj);
+        if (uId && !seenIds.has(uId)) {
+          seenIds.add(uId);
+          normalizedMembers.push(userObj);
+        }
+      });
+    }
+
+    const balanceSummary = calculateBalances(expenses, settlementsList, normalizedMembers);
 
     res.status(200).json({
       status: 'success',

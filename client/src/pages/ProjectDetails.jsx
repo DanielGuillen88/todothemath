@@ -64,6 +64,7 @@ export default function ProjectDetails() {
       <SettlementList
         project={project}
         balances={balances}
+        expenses={expenses}
         currency={project?.currency || 'EUR'}
         currentUser={user}
         settlementHistory={settlementHistory}
