@@ -1,6 +1,6 @@
-import { Input, Select } from '../ui';
-import { extractEntityId } from '../../utils/expenseHelpers';
-import { EXPENSE_CATEGORIES } from '../../constants/categories';
+import { Input, Select } from '../../ui';
+import { extractEntityId } from '../../../utils/expenseHelpers';
+import { EXPENSE_CATEGORIES } from '../../../constants/categories';
 
 export default function ExpenseFields({
   values,

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { CheckCircle2, AlertCircle, Check, X, Pencil, Trash2, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import ExpenseFields from './ExpenseFields';
-import { Button } from '../ui';
+import { Button } from '../../ui';
 import {
   extractEntityId,
   formatTimeHHMM,
-} from '../../utils/expenseHelpers';
+} from '../../../utils/expenseHelpers';
 
 export default function ExpenseItem({
   expense,

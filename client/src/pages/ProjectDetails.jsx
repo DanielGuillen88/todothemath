@@ -5,8 +5,8 @@ import { useProjectDetails } from '../hooks/useProjectDetails';
 
 import ProjectHeader from '../components/project/ProjectHeader';
 import SettlementList from '../components/project/SettlementList';
-import ExpenseForm from '../components/project/ExpenseForm';
-import ExpenseList from '../components/project/ExpenseList';
+import ExpenseForm from '../components/project/expenses';
+import ExpenseList from '../components/project/expenses';
 import MemberList from '../components/project/members';
 
 export default function ProjectDetails() {
