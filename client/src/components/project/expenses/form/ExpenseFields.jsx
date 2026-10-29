@@ -1,6 +1,6 @@
 import { Input, Select } from '../../../ui';
 import ExpenseSplitSelector from './ExpenseSplitSelector';
-import { EXPENSE_CATEGORIES } from '../../../../constants/categories';
+import { EXPENSE_CATEGORIES } from './categories';
 
 export default function ExpenseFields({
   values,
