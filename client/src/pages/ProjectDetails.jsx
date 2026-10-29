@@ -7,7 +7,7 @@ import ProjectHeader from '../components/project/ProjectHeader';
 import SettlementList from '../components/project/SettlementList';
 import ExpenseForm from '../components/project/ExpenseForm';
 import ExpenseList from '../components/project/ExpenseList';
-import MemberList from '../components/project/MemberList';
+import MemberList from '../components/project/members';
 
 export default function ProjectDetails() {
   const { id } = useParams();
