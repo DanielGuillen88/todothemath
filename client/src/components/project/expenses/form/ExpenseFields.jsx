@@ -1,5 +1,5 @@
 import { Input, Select } from '../../../ui';
-import { extractEntityId } from '../../../../utils/expenseHelpers';
+import ExpenseSplitSelector from './ExpenseSplitSelector';
 import { EXPENSE_CATEGORIES } from '../../../../constants/categories';
 
 export default function ExpenseFields({
@@ -14,13 +14,10 @@ export default function ExpenseFields({
 }) {
   const isShared = !values.isPersonal;
 
-  // 1. Modifica EXCLUSIVAMENTE isPersonal sin tocar la categoría seleccionada
   const handleSharedCheckboxChange = (e) => {
-    const willBeShared = e.target.checked;
-    onChange('isPersonal', !willBeShared);
+    onChange('isPersonal', !e.target.checked);
   };
 
-  // 2. Modifica EXCLUSIVAMENTE la categoría sin tocar isPersonal
   const handleCategoryChange = (eOrValue) => {
     const newCategory = (eOrValue && typeof eOrValue === 'object' && eOrValue.target)
       ? eOrValue.target.value
@@ -32,13 +29,13 @@ export default function ExpenseFields({
   const numericAmount = Number(values.amount) || 0;
   const count = selectedMembers.length || 1;
   const perPersonShare = (numericAmount / count).toFixed(2);
+  const currency = project?.currency || '€';
 
   const selectOptions = EXPENSE_CATEGORIES.map((cat) => ({
     value: cat,
     label: cat,
   }));
 
-  // Filtramos solo los miembros confirmados (excluye pendientes de aceptar invitación)
   const activeMembers = (project?.members || []).filter((m) => m?.status !== 'pending');
 
   return (
@@ -59,7 +56,7 @@ export default function ExpenseFields({
         <div>
           <Input
             id="expense-amount"
-            label={`Importe (${project?.currency || '€'})`}
+            label={`Importe (${currency})`}
             type="number"
             step="any"
             min="0.01"
@@ -112,43 +109,16 @@ export default function ExpenseFields({
         </div>
       </div>
 
-      {/* Selector de reparto entre miembros activos */}
       {showSplitSelector && isShared && activeMembers.length > 1 && (
-        <div className="mt-3.5 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-400">Dividir gasto entre:</span>
-            <span className="text-[11px] font-semibold text-indigo-400">
-              {selectedMembers.length} seleccionados ({perPersonShare} {project?.currency || '€'}/persona)
-            </span>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {activeMembers.map((m, idx) => {
-              const memberUserData = m?.user || m;
-              const memberId = extractEntityId(memberUserData) || String(memberUserData?._id || memberUserData?.id || memberUserData || '');
-              const isIncluded = selectedMembers.some((mid) => extractEntityId(mid) === memberId);
-              const memberName = memberUserData?.name || (memberUserData?.email ? memberUserData.email.split('@')[0] : `Usuario (${memberId.slice(-4)})`);
-              const isCurrent = memberId === extractEntityId(currentUser);
-
-              return (
-                <button
-                  key={`split-${memberId}-${idx}`}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onToggleMember(memberId)}
-                  className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-                    isIncluded
-                      ? 'bg-indigo-950/80 border-indigo-600/70 text-indigo-200'
-                      : 'bg-slate-900 border-slate-800 text-slate-500 line-through'
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${isIncluded ? 'bg-indigo-400' : 'bg-slate-600'}`}></span>
-                  <span>{isCurrent ? 'Tú' : memberName}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <ExpenseSplitSelector
+          activeMembers={activeMembers}
+          selectedMembers={selectedMembers}
+          onToggleMember={onToggleMember}
+          disabled={disabled}
+          perPersonShare={perPersonShare}
+          currency={currency}
+          currentUser={currentUser}
+        />
       )}
     </>
   );
