@@ -4,9 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useProjectDetails } from '../hooks/useProjectDetails';
 
 import ProjectHeader from '../components/project/ProjectHeader';
-import SettlementList from '../components/project/SettlementList';
-import ExpenseForm from '../components/project/expenses';
-import ExpenseList from '../components/project/expenses';
+import { SettlementList } from '../components/project/settlements';
+import { ExpenseForm, ExpenseList } from '../components/project/expenses';
 import MemberList from '../components/project/members';
 
 export default function ProjectDetails() {
