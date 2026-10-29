@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, AlertCircle } from 'lucide-react';
+import { UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Input, Button } from '../components/ui';
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register } = useAuth();
@@ -16,6 +18,7 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
 
     if (password.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres.');
@@ -25,10 +28,12 @@ export default function Register() {
     setIsSubmitting(true);
     try {
       await register(name, email, password);
-      navigate('/');
+      setSuccessMessage('¡Cuenta creada correctamente! Iniciando tu sesión...');
+      setTimeout(() => {
+        navigate('/');
+      }, 900);
     } catch (err) {
       setError(err.response?.data?.message || 'Error al registrar la cuenta.');
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -42,57 +47,65 @@ export default function Register() {
         </div>
 
         {error && (
-          <div className="mb-6 p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg flex items-center gap-2.5 text-sm">
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <div className="mb-6 p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg flex items-center gap-2.5 text-sm animate-in fade-in">
+            <AlertCircle className="w-5 h-5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
+        {successMessage && (
+          <div className="mb-6 p-3 bg-emerald-950/40 border border-emerald-800 text-emerald-300 rounded-lg flex items-center gap-2.5 text-sm animate-in fade-in">
+            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+            <span>{successMessage}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Nombre Completo</label>
-            <input
-              type="text"
-              // required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nombre Apellido"
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Correo Electrónico</label>
-            <input
-              type="email"
-              // required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@email.com"
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Contraseña</label>
-            <input
-              type="password"
-              // required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 6 caracteres"
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-          </div>
-
-          <button
-            type="submit"
+          <Input
+            id="register-name"
+            label="Nombre Completo"
+            type="text"
+            required
             disabled={isSubmitting}
-            className="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nombre Apellido"
+            className="!py-2.5 !text-sm"
+          />
+
+          <Input
+            id="register-email"
+            label="Correo Electrónico"
+            type="email"
+            required
+            disabled={isSubmitting}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="tu@email.com"
+            className="!py-2.5 !text-sm"
+          />
+
+          <Input
+            id="register-password"
+            label="Contraseña"
+            type="password"
+            required
+            disabled={isSubmitting}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Mínimo 6 caracteres"
+            className="!py-2.5 !text-sm"
+          />
+
+          <Button
+            type="submit"
+            variant="primary"
+            isLoading={isSubmitting}
+            icon={UserPlus}
+            className="w-full mt-2 !py-2.5"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>{isSubmitting ? 'Creando cuenta...' : 'Registrarse'}</span>
-          </button>
+            {isSubmitting ? (successMessage ? 'Preparando espacio...' : 'Creando cuenta...') : 'Registrarse'}
+          </Button>
         </form>
 
         <p className="text-center text-sm text-slate-400 mt-6">
