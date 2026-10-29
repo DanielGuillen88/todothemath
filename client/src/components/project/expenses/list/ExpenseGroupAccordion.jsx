@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import ExpenseItem from './ExpenseItem';
+import { ExpenseItem } from '../item';
 
 export default function ExpenseGroupAccordion({
   groupKey,

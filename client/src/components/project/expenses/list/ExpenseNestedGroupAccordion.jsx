@@ -1,5 +1,4 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import ExpenseItem from './ExpenseItem';
 
 export default function ExpenseNestedGroupAccordion({
   dateKey,

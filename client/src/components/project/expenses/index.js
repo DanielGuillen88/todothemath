@@ -1,11 +1,24 @@
-export { default } from './ExpenseList';
-export { default as ExpenseList } from './ExpenseList';
-export { default as ExpenseItem } from './ExpenseItem';
-export { default as ExpenseItemEditForm } from './ExpenseItemEditForm';
-export { default as ExpenseItemSplitGrid } from './ExpenseItemSplitGrid';
-export { default as ExpenseItemDeleteConfirm } from './ExpenseItemDeleteConfirm';
-export { default as ExpenseFilters } from './ExpenseFilters';
-export { default as ExpenseGroupAccordion } from './ExpenseGroupAccordion';
-export { default as ExpenseNestedGroupAccordion } from './ExpenseNestedGroupAccordion';
-export { default as ExpenseForm } from './ExpenseForm';
-export { default as ExpenseFields } from './ExpenseFields';
+// Reexportación por defecto global del módulo
+export { ExpenseList as default } from './list';
+
+// Lista
+export {
+  ExpenseList,
+  ExpenseFilters,
+  ExpenseGroupAccordion,
+  ExpenseNestedGroupAccordion,
+} from './list';
+
+// Tarjeta y acciones
+export {
+  ExpenseItem,
+  ExpenseItemEditForm,
+  ExpenseItemSplitGrid,
+  ExpenseItemDeleteConfirm,
+} from './item';
+
+// Formularios
+export {
+  ExpenseForm,
+  ExpenseFields,
+} from './form';

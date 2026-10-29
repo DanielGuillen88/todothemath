@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Receipt } from 'lucide-react';
-import ExpenseItem from './ExpenseItem';
+import { ExpenseItem } from '../item';
 import ExpenseFilters from './ExpenseFilters';
 import ExpenseGroupAccordion from './ExpenseGroupAccordion';
 import ExpenseNestedGroupAccordion from './ExpenseNestedGroupAccordion';

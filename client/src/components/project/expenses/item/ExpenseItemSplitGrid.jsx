@@ -1,5 +1,5 @@
 import { Users } from 'lucide-react';
-import { extractEntityId } from '../../../utils/expenseHelpers';
+import { extractEntityId } from '../../../../utils/expenseHelpers';
 
 export default function ExpenseItemSplitGrid({
   splitBetween = [],

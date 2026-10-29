@@ -1,6 +1,6 @@
 import { AlertCircle, Check, X } from 'lucide-react';
-import ExpenseFields from './ExpenseFields';
-import { Button } from '../../ui';
+import { ExpenseFields } from '../form';
+import { Button } from '../../../ui';
 
 export default function ExpenseItemEditForm({
   editForm,
