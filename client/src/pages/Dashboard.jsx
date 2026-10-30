@@ -1,221 +1,39 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  getProjects, 
-  updateProjectById, 
-  acceptInvitation, 
-  rejectInvitation 
-} from '../services/projectService';
-import { 
-  FolderKanban, 
-  Plus, 
-  X, 
-  AlertCircle, 
-  Check, 
-  CheckCircle2, 
-  Mail, 
-  Clock 
-} from 'lucide-react';
-import { Button } from '../components/ui';
-import ProjectCard from '../components/project/ProjectCard';
-import DeleteProjectModal from '../components/project/DeleteProjectModal';
-import ProjectFormFields from '../components/project/ProjectFormFields';
-import { extractEntityId } from '../utils/expenseHelpers';
+import { useDashboardProjects } from '../hooks/useDashboardProjects';
+import { FolderKanban, Plus, X, CheckCircle2 } from 'lucide-react';
+import { ProjectCard, DeleteProjectModal, EditProjectModal, PendingInvitationsList } from '../components/dashboard';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    loading,
+    pendingInvitations,
+    activeProjects,
+    toastMessage,
+    setToastMessage,
+    invitationActionId,
+    fetchProjects,
+    handleAcceptInvite,
+    handleRejectInvite,
+    removeProjectFromList,
+  } = useDashboardProjects(user);
 
-  // Estados para modal de edición
   const [editingProject, setEditingProject] = useState(null);
-  const [editForm, setEditForm] = useState({
-    title: '',
-    description: '',
-    budget: '',
-    currency: 'EUR',
-    type: 'trip',
-  });
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [isConfirmingSave, setIsConfirmingSave] = useState(false);
-
-  // Estado para toast de éxito
-  const [toastMessage, setToastMessage] = useState(null);
-
-  // Estado para modal de eliminación
   const [deletingProject, setDeletingProject] = useState(null);
 
-  // Estado para acciones de invitación en curso
-  const [invitationActionId, setInvitationActionId] = useState(null);
-
-  const currentUserId = String(
-    user?._id || user?.id || user?.user?._id || user?.user?.id || extractEntityId(user) || ''
-  ).trim();
-
-  const currentUserEmail = String(
-    user?.email || user?.user?.email || ''
-  ).toLowerCase().trim();
-
-  const fetchProjects = async () => {
-    try {
-      setLoading(true);
-      const res = await getProjects();
-      const list = res.data?.data?.projects || res.data?.projects || res.data?.data || (Array.isArray(res.data) ? res.data : []);
-      setProjects(Array.isArray(list) ? list : []);
-    } catch (err) {
-      console.error('Error cargando proyectos:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  useEffect(() => {
-    if (!toastMessage) return;
-    const timer = setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [toastMessage]);
-
-  // Clasificación de proyectos: Invitaciones pendientes vs Proyectos activos
-  const { pendingInvitations, activeProjects } = useMemo(() => {
-    const pending = [];
-    const active = [];
-
-    projects.forEach((p) => {
-      const ownerId = String(p.owner?._id || p.owner?.id || p.owner || '').trim();
-      const ownerEmail = String(p.owner?.email || '').toLowerCase().trim();
-
-      const isOwner = Boolean(
-        (currentUserId && ownerId && currentUserId === ownerId) ||
-        (currentUserEmail && ownerEmail && currentUserEmail === ownerEmail)
-      );
-
-      // Si eres el owner, el proyecto siempre es activo para ti
-      if (isOwner) {
-        active.push(p);
-        return;
-      }
-
-      // Buscar tu entrada en members
-      const myMemberEntry = Array.isArray(p.members)
-        ? p.members.find((m) => {
-            const mUser = m?.user || m;
-            const mId = String(mUser?._id || mUser?.id || mUser || '').trim();
-            const mEmail = String(mUser?.email || '').toLowerCase().trim();
-            return (
-              (currentUserId && mId && currentUserId === mId) ||
-              (currentUserEmail && mEmail && currentUserEmail === mEmail)
-            );
-          })
-        : null;
-
-      if (myMemberEntry && myMemberEntry.status === 'pending') {
-        pending.push(p);
-      } else {
-        // Miembro aceptado o compatibilidad con esquemas anteriores
-        active.push(p);
-      }
-    });
-
-    return { pendingInvitations: pending, activeProjects: active };
-  }, [projects, currentUserId, currentUserEmail]);
-
-  const handleAcceptInvite = async (projectId) => {
-    setInvitationActionId(projectId);
-    try {
-      await acceptInvitation(projectId);
-      await fetchProjects();
-      setToastMessage('✅ Te has unido al proyecto');
-    } catch (err) {
-      console.error('Error al aceptar invitación:', err);
-    } finally {
-      setInvitationActionId(null);
-    }
-  };
-
-  const handleRejectInvite = async (projectId) => {
-    setInvitationActionId(projectId);
-    try {
-      await rejectInvitation(projectId);
-      await fetchProjects();
-      setToastMessage('Invitación rechazada');
-    } catch (err) {
-      console.error('Error al rechazar invitación:', err);
-    } finally {
-      setInvitationActionId(null);
-    }
-  };
-
   const openEditModal = (p) => {
-    const projectId = String(p?._id || p?.id || '');
-    setEditingProject({ ...p, resolvedId: projectId });
-    setEditForm({
-      title: p.title || p.name || '',
-      description: p.description || '',
-      budget: p.budget !== undefined && p.budget !== null ? p.budget : '',
-      currency: p.currency || 'EUR',
-      type: p.type || 'trip',
-    });
-    setErrorMsg('');
-    setIsConfirmingSave(false);
+    setEditingProject({ ...p, resolvedId: String(p?._id || p?.id || '') });
   };
 
-  const closeEditModal = () => {
-    setEditingProject(null);
-    setIsConfirmingSave(false);
-    setErrorMsg('');
+  const handleEditSuccess = async (title) => {
+    await fetchProjects();
+    setToastMessage(`Proyecto "${title}" actualizado con éxito`);
   };
 
-  const handleFieldChange = (field, value) => {
-    setEditForm((prev) => ({ ...prev, [field]: value }));
-    if (isConfirmingSave) setIsConfirmingSave(false);
-  };
-
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    if (!editForm.title.trim()) return;
-
-    if (!isConfirmingSave) {
-      setIsConfirmingSave(true);
-      return;
-    }
-
-    const targetId = editingProject?.resolvedId || editingProject?._id || editingProject?.id;
-    if (!targetId || targetId === 'undefined') return;
-
-    setIsUpdating(true);
-    setErrorMsg('');
-
-    try {
-      await updateProjectById(targetId, {
-        title: editForm.title.trim(),
-        description: editForm.description.trim(),
-        budget: editForm.budget !== '' ? Number(editForm.budget) : 0,
-        currency: editForm.currency,
-        type: editForm.type || 'trip',
-      });
-
-      const updatedTitle = editForm.title.trim();
-      closeEditModal();
-      await fetchProjects();
-      setToastMessage(`Proyecto "${updatedTitle}" actualizado con éxito`);
-    } catch (err) {
-      setErrorMsg(err.response?.data?.message || 'Error al actualizar el proyecto');
-      setIsConfirmingSave(false);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleDeletedSuccess = (deletedId) => {
-    setProjects((prev) => prev.filter((p) => String(p._id || p.id) !== String(deletedId)));
+  const handleDeleteSuccess = (deletedId) => {
+    removeProjectFromList(deletedId);
     setDeletingProject(null);
     setToastMessage('Proyecto eliminado correctamente');
   };
@@ -223,14 +41,14 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
       </div>
     );
   }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
-      {/* Toast Notification Flotante */}
+      {/* Toast Flotante */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900 border border-emerald-500/50 text-emerald-300 px-4 py-3 rounded-xl shadow-2xl shadow-black/80 animate-in fade-in slide-in-from-bottom-4 duration-200">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -259,64 +77,15 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* Bandeja de Invitaciones Pendientes */}
-      {pendingInvitations.length > 0 && (
-        <div className="bg-slate-900/90 border border-amber-900/50 rounded-2xl p-5 mb-8 shadow-xl">
-          <div className="flex items-center gap-2 mb-3">
-            <Mail className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-bold text-amber-300">
-              Invitaciones pendientes ({pendingInvitations.length})
-            </h2>
-          </div>
+      {/* Invitaciones Pendientes */}
+      <PendingInvitationsList
+        invitations={pendingInvitations}
+        actionRunningId={invitationActionId}
+        onAccept={handleAcceptInvite}
+        onReject={handleRejectInvite}
+      />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {pendingInvitations.map((proj) => {
-              const pId = String(proj._id || proj.id);
-              const isActionRunning = invitationActionId === pId;
-
-              return (
-                <div
-                  key={`pending-${pId}`}
-                  className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-white text-sm truncate">{proj.title || proj.name}</p>
-                    <p className="text-xs text-slate-400 truncate flex items-center gap-1 mt-0.5">
-                      <Clock className="w-3 h-3 text-amber-400 shrink-0" />
-                      <span>Invitado por {proj.owner?.name || proj.owner?.email || 'Organizador'}</span>
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={X}
-                      disabled={isActionRunning}
-                      onClick={() => handleRejectInvite(pId)}
-                      className="text-slate-400 hover:text-red-400 px-2.5 py-1 text-xs"
-                    >
-                      Rechazar
-                    </Button>
-                    <Button
-                      size="sm"
-                      icon={Check}
-                      isLoading={isActionRunning}
-                      disabled={isActionRunning}
-                      onClick={() => handleAcceptInvite(pId)}
-                      className="text-xs"
-                    >
-                      Aceptar
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Lista de Proyectos Activos */}
+      {/* Proyectos Activos */}
       {activeProjects.length === 0 ? (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
           <FolderKanban className="w-12 h-12 mx-auto text-slate-600 mb-3" />
@@ -343,86 +112,20 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Modal Reutilizable de Eliminación */}
+      {/* Modales */}
       <DeleteProjectModal
         project={deletingProject}
         isOpen={Boolean(deletingProject)}
         onClose={() => setDeletingProject(null)}
-        onSuccess={handleDeletedSuccess}
+        onSuccess={handleDeleteSuccess}
       />
 
-      {/* Modal de Edición */}
-      {editingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative my-8">
-            <button
-              onClick={closeEditModal}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-lg font-bold text-white mb-4">Editar Proyecto</h3>
-
-            {errorMsg && (
-              <div className="mb-4 p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg flex items-center gap-2 text-xs">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleUpdate} className="space-y-4">
-              <ProjectFormFields
-                values={editForm}
-                onChange={handleFieldChange}
-                disabled={isUpdating}
-              />
-
-              <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-                <div>
-                  {isConfirmingSave && (
-                    <span className="text-xs text-amber-400 font-medium">
-                      Pulsa de nuevo para aplicar los cambios
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      if (isConfirmingSave) {
-                        setIsConfirmingSave(false);
-                      } else {
-                        closeEditModal();
-                      }
-                    }}
-                    disabled={isUpdating}
-                  >
-                    {isConfirmingSave ? 'Volver' : 'Cancelar'}
-                  </Button>
-
-                  <Button
-                    type="submit"
-                    size="sm"
-                    isLoading={isUpdating}
-                    className={
-                      isConfirmingSave
-                        ? '!bg-amber-600 hover:!bg-amber-500 !text-white'
-                        : ''
-                    }
-                    icon={isConfirmingSave ? Check : undefined}
-                  >
-                    {isConfirmingSave ? '¿Confirmar cambios?' : 'Guardar Cambios'}
-                  </Button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EditProjectModal
+        project={editingProject}
+        isOpen={Boolean(editingProject)}
+        onClose={() => setEditingProject(null)}
+        onSuccess={handleEditSuccess}
+      />
     </div>
   );
 }

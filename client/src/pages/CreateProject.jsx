@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { createProject } from '../services/projectService.js';
 import { Button } from '../components/ui';
-import ProjectFormFields from '../components/project/ProjectFormFields';
+import { ProjectFormFields } from '../components/dashboard';
 
 export default function CreateProject() {
   const navigate = useNavigate();

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '../ui';
-import DeleteProjectModal from './DeleteProjectModal';
+import { DeleteProjectModal } from '../dashboard';
 import { extractEntityId } from '../../utils/expenseHelpers';
 
 export default function ProjectHeader({ project, metrics, currentUser }) {

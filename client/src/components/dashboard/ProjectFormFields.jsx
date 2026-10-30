@@ -1,4 +1,4 @@
-import { Input, Select } from '../ui/index';
+import { Input, Select } from '../ui';
 
 const PROJECT_TYPES = [
   { value: 'trip', label: 'Viaje' },
